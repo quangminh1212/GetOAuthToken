@@ -4,7 +4,7 @@ const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const open = require('opn');
+
 
 const app = express();
 const PORT = 3000;
@@ -93,7 +93,7 @@ app.get('/oauth/callback', async (req, res) => {
 
         const tokenData = response.data;
         tokenData.timestamp = new Date().toISOString();
-        
+
         writeJson(TOKEN_FILE, tokenData);
 
         // Redirect back to client app
