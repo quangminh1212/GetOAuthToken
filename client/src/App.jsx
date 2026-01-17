@@ -1,187 +1,240 @@
-import { useState, useEffect } from 'react'
-import './App.css'
+import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import './App.css';
+
+const GoogleIcon = () => (
+  <svg className="w-5 h-5 mr-3" viewBox="0 0 48 48">
+    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+  </svg>
+);
+
+const SettingsIcon = () => (
+  <svg className="w-5 h-5 text-gray-400 hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
+
+const CopyIcon = () => (
+  <svg className="w-4 h-4 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+  </svg>
+);
 
 function App() {
-  const [config, setConfig] = useState({
-    clientId: '',
-    clientSecret: '',
-    authUrl: '',
-    tokenUrl: '',
-    redirectUri: '',
-    scope: ''
-  });
-  const [tokenData, setTokenData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('');
+  const [tokenData, setTokenData] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [config, setConfig] = useState({
+    client_id: '',
+    client_secret: '',
+    auth_url: 'https://accounts.google.com/o/oauth2/v2/auth',
+    token_url: 'https://oauth2.googleapis.com/token',
+    redirect_uri: 'http://localhost:3000/oauth/callback',
+    scope: 'email profile openid'
+  });
 
   useEffect(() => {
-    // Load config
-    fetch('http://localhost:3000/api/config')
-      .then(res => res.json())
-      .then(data => setConfig(data))
-      .catch(err => console.error(err));
-
-    // Check for existing token
-    fetch('http://localhost:3000/api/token')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.access_token) {
-          setTokenData(data);
-        }
-      });
-
-    // Check URL params for success
-    const params = new URLSearchParams(window.location.search);
-    const statusParam = params.get('status');
-    const msgParam = params.get('msg');
-
-    if (statusParam === 'success') {
-      setStatus('Successfully retrieved token!');
-      // Refresh token display
-      fetch('http://localhost:3000/api/token')
-        .then(res => res.json())
-        .then(data => setTokenData(data));
-
-      // Clean URL
-      window.history.replaceState({}, document.title, "/");
-    } else if (statusParam === 'error') {
-      setStatus(`Error: ${msgParam}`);
+    // Try to load config from localStorage
+    const savedConfig = localStorage.getItem('oauth_config');
+    if (savedConfig) {
+      setConfig(JSON.parse(savedConfig));
     }
   }, []);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setConfig(prev => ({ ...prev, [name]: value }));
-  };
+  const handleLogin = async () => {
+    if (!config.client_id || !config.client_secret) {
+      setShowSettings(true);
+      return;
+    }
 
-  const handleSaveAndConnect = async () => {
     setLoading(true);
-    setStatus('Saving configuration...');
-
     try {
-      // Save config
-      await fetch('http://localhost:3000/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
-      });
-
-      // Get Auth URL
-      const res = await fetch('http://localhost:3000/api/auth-url');
-      const data = await res.json();
-
-      if (data.url) {
-        setStatus('Redirecting to provider...');
-        window.location.href = data.url;
-      } else {
-        setStatus('Failed to generate Auth URL');
-      }
-    } catch (err) {
-      console.error(err);
-      setStatus('An error occurred.');
+      const result = await invoke('login_google', { config });
+      setTokenData(result);
+    } catch (error) {
+      console.error(error);
+      alert(`Login Failed: ${error}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const copyToken = () => {
-    if (tokenData?.access_token) {
-      navigator.clipboard.writeText(JSON.stringify(tokenData, null, 2));
-      alert('Token data copied to clipboard!');
-    }
-  }
+  const handleSaveConfig = () => {
+    localStorage.setItem('oauth_config', JSON.stringify(config));
+    setShowSettings(false);
+  };
+
+  const handleLogout = () => {
+    setTokenData(null);
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+  };
 
   return (
-    <div className="container">
-      <div className="glass-card">
-        <h1>OAuth 2.0 Token Getter</h1>
-        <p className="subtitle">Securely authenticate and retrieve your access tokens.</p>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center text-white relative">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
 
-        <div className="grid-form">
-          <div className="input-group">
-            <label>Client ID</label>
-            <input
-              type="text"
-              name="clientId"
-              value={config.clientId}
-              onChange={handleChange}
-              placeholder="Enter Client ID"
-            />
+      <div className="relative z-10 w-full max-w-md">
+        {/* Settings Modal */}
+        {showSettings && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
+            <div className="bg-[#1a1a1a]/90 border border-white/10 p-6 rounded-2xl w-full max-w-sm shadow-2xl">
+              <h2 className="text-xl font-bold mb-4 font-sans text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">Settings</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Client ID</label>
+                  <input
+                    type="text"
+                    value={config.client_id}
+                    onChange={(e) => setConfig({ ...config, client_id: e.target.value })}
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                    placeholder="Enter Client ID"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Client Secret</label>
+                  <input
+                    type="password"
+                    value={config.client_secret}
+                    onChange={(e) => setConfig({ ...config, client_secret: e.target.value })}
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                    placeholder="Enter Client Secret"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Redirect URI</label>
+                  <input
+                    type="text"
+                    value={config.redirect_uri}
+                    onChange={(e) => setConfig({ ...config, redirect_uri: e.target.value })}
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                  />
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="px-4 py-2 text-sm text-gray-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveConfig}
+                  className="px-4 py-2 bg-accent hover:bg-opacity-80 rounded-lg text-sm font-semibold shadow-lg shadow-accent/20 transition-all"
+                >
+                  Save Configuration
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Main Card */}
+        <div className="bg-glass-bg border border-glass-border rounded-3xl p-8 shadow-2xl backdrop-blur-xl">
+          <div className="flex justify-between items-start mb-8">
+            <div>
+              <h1 className="text-3xl font-bold font-sans bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+                GetOAuth.
+              </h1>
+              <p className="text-sm text-gray-400 mt-1">Token Manager</p>
+            </div>
+            <button onClick={() => setShowSettings(true)} className="p-2 rounded-full hover:bg-white/5 transition-colors">
+              <SettingsIcon />
+            </button>
           </div>
 
-          <div className="input-group">
-            <label>Client Secret</label>
-            <input
-              type="password"
-              name="clientSecret"
-              value={config.clientSecret}
-              onChange={handleChange}
-              placeholder="Enter Client Secret"
-            />
-          </div>
+          {!tokenData ? (
+            <div className="text-center py-8">
+              <div className="mb-8 relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-accent to-blue-600 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                <button
+                  onClick={handleLogin}
+                  disabled={loading}
+                  className="relative w-full bg-white text-gray-800 font-semibold py-4 px-6 rounded-xl flex items-center justify-center gap-3 hover:bg-gray-50 transition-all transform hover:-translate-y-1 shadow-lg"
+                >
+                  {loading ? (
+                    <span className="flex items-center">
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Connecting...
+                    </span>
+                  ) : (
+                    <>
+                      <GoogleIcon />
+                      <span>Continue with Google</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500">Securely authentiate with your Google account to retrieve access tokens.</p>
+            </div>
+          ) : (
+            <div className="space-y-6 animate-fade-in">
+              <div className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/5">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-blue-500 flex items-center justify-center text-lg font-bold">
+                  G
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-white">Google Account</p>
+                  <p className="text-xs text-green-400">● Connected</p>
+                </div>
+                <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-white underline">
+                  Logout
+                </button>
+              </div>
 
-          <div className="input-group">
-            <label>Auth URL</label>
-            <input
-              type="text"
-              name="authUrl"
-              value={config.authUrl}
-              onChange={handleChange}
-            />
-          </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-xs text-gray-400 uppercase tracking-wider">Access Token</label>
+                    <button onClick={() => copyToClipboard(tokenData.access_token)} className="text-accent hover:text-white transition-colors">
+                      <CopyIcon />
+                    </button>
+                  </div>
+                  <div className="p-3 bg-black/40 rounded-lg border border-white/10 font-mono text-xs text-gray-300 break-all max-h-24 overflow-y-auto custom-scrollbar">
+                    {tokenData.access_token}
+                  </div>
+                </div>
 
-          <div className="input-group">
-            <label>Token URL</label>
-            <input
-              type="text"
-              name="tokenUrl"
-              value={config.tokenUrl}
-              onChange={handleChange}
-            />
-          </div>
+                {tokenData.refresh_token && (
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-xs text-gray-400 uppercase tracking-wider">Refresh Token</label>
+                      <button onClick={() => copyToClipboard(tokenData.refresh_token)} className="text-accent hover:text-white transition-colors">
+                        <CopyIcon />
+                      </button>
+                    </div>
+                    <div className="p-3 bg-black/40 rounded-lg border border-white/10 font-mono text-xs text-gray-300 break-all">
+                      {tokenData.refresh_token}
+                    </div>
+                  </div>
+                )}
 
-          <div className="input-group">
-            <label>Redirect URI</label>
-            <input
-              type="text"
-              name="redirectUri"
-              value={config.redirectUri}
-              onChange={handleChange}
-            />
-          </div>
-
-          <div className="input-group full-width">
-            <label>Scope</label>
-            <input
-              type="text"
-              name="scope"
-              value={config.scope}
-              onChange={handleChange}
-              placeholder="e.g. email profile"
-            />
-          </div>
+                <div className="text-center pt-2">
+                  <button
+                    onClick={() => copyToClipboard(JSON.stringify(tokenData, null, 2))}
+                    className="text-xs text-gray-500 hover:text-accent transition-colors"
+                  >
+                    Copy Full JSON Response
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="actions">
-          <button className="primary-btn" onClick={handleSaveAndConnect} disabled={loading}>
-            {loading ? 'Processing...' : 'Save & Connect'}
-          </button>
+        <div className="mt-8 text-center">
+          <p className="text-xs text-gray-500">Inspired by xlab.id.vn</p>
         </div>
-
-        {status && <div className="status-msg">{status}</div>}
       </div>
-
-      {tokenData && (
-        <div className="glass-card token-card">
-          <div className="token-header">
-            <h2>Authentication Result</h2>
-            <button className="copy-btn" onClick={copyToken}>Copy JSON</button>
-          </div>
-          <pre>
-            {JSON.stringify(tokenData, null, 2)}
-          </pre>
-        </div>
-      )}
     </div>
   )
 }
