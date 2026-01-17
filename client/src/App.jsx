@@ -28,6 +28,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [tokenData, setTokenData] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [error, setError] = useState(null);
+  const [notification, setNotification] = useState(null);
   const [config, setConfig] = useState({
     client_id: '',
     client_secret: '',
@@ -45,40 +47,70 @@ function App() {
     }
   }, []);
 
+  const showNotification = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
   const handleLogin = async () => {
     if (!config.client_id || !config.client_secret) {
+      setError('Please configure Client ID and Client Secret first');
       setShowSettings(true);
       return;
     }
 
     setLoading(true);
+    setError(null);
     try {
       const result = await invoke('login_google', { config });
       setTokenData(result);
+      showNotification('Login successful! Tokens retrieved.');
     } catch (error) {
       console.error(error);
-      alert(`Login Failed: ${error}`);
+      const errorMsg = typeof error === 'string' ? error : error.message || 'Login failed';
+      setError(errorMsg);
+      showNotification(errorMsg, 'error');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSaveConfig = () => {
+    if (!config.client_id || !config.client_secret) {
+      setError('Client ID and Client Secret are required');
+      return;
+    }
     localStorage.setItem('oauth_config', JSON.stringify(config));
     setShowSettings(false);
+    setError(null);
+    showNotification('Configuration saved successfully');
   };
 
   const handleLogout = () => {
     setTokenData(null);
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showNotification('Copied to clipboard!');
+    } catch (err) {
+      showNotification('Failed to copy', 'error');
+    }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center text-white relative">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+
+      {/* Notification Toast */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg animate-fade-in ${
+          notification.type === 'error' ? 'bg-red-500/90' : 'bg-green-500/90'
+        } text-white font-medium`}>
+          {notification.message}
+        </div>
+      )}
 
       <div className="relative z-10 w-full max-w-md">
         {/* Settings Modal */}
@@ -86,6 +118,11 @@ function App() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
             <div className="bg-[#1a1a1a]/90 border border-white/10 p-6 rounded-2xl w-full max-w-sm shadow-2xl">
               <h2 className="text-xl font-bold mb-4 font-sans text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">Settings</h2>
+              {error && (
+                <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-sm">
+                  {error}
+                </div>
+              )}
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Client ID</label>

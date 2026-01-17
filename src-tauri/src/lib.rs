@@ -34,11 +34,17 @@ struct AppState {
 
 #[tauri::command]
 async fn login_google(app: AppHandle, config: OAuthConfig) -> Result<TokenData, String> {
+    // Validate config
+    if config.client_id.is_empty() || config.client_secret.is_empty() {
+        return Err("Client ID and Client Secret are required".to_string());
+    }
+
     let (tx, rx) = tokio::sync::oneshot::channel::<String>();
     let tx = Arc::new(Mutex::new(Some(tx)));
 
     // Parse port from redirect_uri
-    let url = url::Url::parse(&config.redirect_uri).map_err(|e| e.to_string())?;
+    let url = url::Url::parse(&config.redirect_uri)
+        .map_err(|e| format!("Invalid redirect URI: {}", e))?;
     let port = url.port().unwrap_or(3000);
 
     // Create a channel for server shutdown
@@ -52,8 +58,22 @@ async fn login_google(app: AppHandle, config: OAuthConfig) -> Result<TokenData, 
         .and(warp::query::<HashMap<String, String>>())
         .map(move |p: HashMap<String, String>| {
             let code = p.get("code").cloned();
+            let error = p.get("error").cloned();
             let tx = tx.clone();
             let shutdown_tx = shutdown_tx.clone();
+            
+            if let Some(err) = error {
+                tokio::spawn(async move {
+                    let mut s_lock = shutdown_tx.lock().await;
+                    if let Some(s) = s_lock.take() {
+                        let _ = s.send(());
+                    }
+                });
+                return warp::reply::html(format!(
+                    "<h1>Login Failed</h1><p>Error: {}</p><script>setTimeout(() => window.close(), 3000)</script>",
+                    err
+                ));
+            }
             
             if let Some(c) = code {
                  let tx_clone = tx.clone();
@@ -69,9 +89,9 @@ async fn login_google(app: AppHandle, config: OAuthConfig) -> Result<TokenData, 
                          let _ = s.send(());
                      }
                  });
-                 warp::reply::html("<h1>Login Successful! You can close this window.</h1><script>setTimeout(() => window.close(), 1000)</script>")
+                 warp::reply::html("<h1>✓ Login Successful!</h1><p>You can close this window now.</p><script>setTimeout(() => window.close(), 1500)</script>")
             } else {
-                 warp::reply::html("<h1>Error: No code received.</h1>")
+                 warp::reply::html("<h1>Error</h1><p>No authorization code received.</p><script>setTimeout(() => window.close(), 3000)</script>")
             }
         });
 
@@ -81,28 +101,31 @@ async fn login_google(app: AppHandle, config: OAuthConfig) -> Result<TokenData, 
         });
 
     // Spawn server
-        tauri::async_runtime::spawn(server);
+    tauri::async_runtime::spawn(server);
 
     // Construct Auth URL
     let client = reqwest::Client::new();
     let auth_url = format!(
         "{}?client_id={}&redirect_uri={}&response_type=code&scope={}&access_type=offline&prompt=consent",
-        config.auth_url, config.client_id, config.redirect_uri, config.scope
+        config.auth_url, 
+        urlencoding::encode(&config.client_id),
+        urlencoding::encode(&config.redirect_uri),
+        urlencoding::encode(&config.scope)
     );
 
     println!("Opening browser for auth: {}", auth_url);
 
     // Open Browser
     if let Err(e) = open::that(&auth_url) {
-        return Err(format!("Failed to open browser: {}", e));
+        return Err(format!("Failed to open browser: {}. Please open manually: {}", e, auth_url));
     }
 
     // Wait for code or timeout
     println!("Waiting for callback on port {}...", port);
     let code = match tokio::time::timeout(std::time::Duration::from_secs(120), rx).await {
         Ok(Ok(c)) => c,
-        Ok(Err(_)) => return Err("Login flow cancelled or channel closed".into()),
-        Err(_) => return Err("Timeout waiting for login (2 minutes)".into()),
+        Ok(Err(_)) => return Err("Login flow cancelled or connection closed".into()),
+        Err(_) => return Err("Timeout: No response received within 2 minutes. Please try again.".into()),
     };
 
     println!("Received auth code. Exchanging for token...");
@@ -120,25 +143,30 @@ async fn login_google(app: AppHandle, config: OAuthConfig) -> Result<TokenData, 
         .form(&params)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Network error during token exchange: {}", e))?;
 
     if !res.status().is_success() {
+        let status = res.status();
         let err_text = res.text().await.unwrap_or_default();
-        return Err(format!("Token exchange failed: {}", err_text));
+        return Err(format!("Token exchange failed ({}): {}", status, err_text));
     }
 
-    let mut token_data: TokenData = res.json().await.map_err(|e| e.to_string())?;
+    let mut token_data: TokenData = res.json().await
+        .map_err(|e| format!("Failed to parse token response: {}", e))?;
     token_data.timestamp = Some(chrono::Utc::now().to_rfc3339());
 
     // Save to file
-    let json = serde_json::to_string_pretty(&token_data).map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&token_data)
+        .map_err(|e| format!("Failed to serialize token data: {}", e))?;
     
-    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    let cwd = std::env::current_dir()
+        .map_err(|e| format!("Failed to get current directory: {}", e))?;
     let file_path = cwd.join("tokens.json");
     
-    std::fs::write(&file_path, json).map_err(|e| format!("Failed to write tokens.json: {}", e))?;
+    std::fs::write(&file_path, json)
+        .map_err(|e| format!("Failed to write tokens.json: {}", e))?;
     
-    println!("Tokens saved successfully to: {:?}", file_path);
+    println!("✓ Tokens saved successfully to: {:?}", file_path);
 
     Ok(token_data)
 }
