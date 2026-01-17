@@ -4,3 +4,13 @@ dist
 tokens.json
 project_config.json
 .DS_Store
+
+# Build outputs
+release/
+src-tauri/target/
+*.exe
+*.msi
+*.dmg
+*.deb
+*.rpm
+*.AppImage

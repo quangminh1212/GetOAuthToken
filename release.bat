@@ -67,7 +67,7 @@ echo [5/5] Tạo thư mục release và copy file...
 if not exist "release" mkdir release
 
 REM Tìm file .exe trong thư mục target
-set "EXE_PATH=src-tauri\target\release\GetOAuthToken.exe"
+set "EXE_PATH=src-tauri\target\release\app.exe"
 set "MSI_PATH=src-tauri\target\release\bundle\msi\GetOAuthToken_1.0.0_x64_en-US.msi"
 set "NSIS_PATH=src-tauri\target\release\bundle\nsis\GetOAuthToken_1.0.0_x64-setup.exe"
 

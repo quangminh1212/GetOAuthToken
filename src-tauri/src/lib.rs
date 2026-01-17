@@ -1,10 +1,9 @@
-use tauri::{AppHandle, Manager, Emitter};
+use tauri::AppHandle;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use warp::Filter;
-use std::net::SocketAddr;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OAuthConfig {
@@ -89,9 +88,9 @@ async fn login_google(app: AppHandle, config: OAuthConfig) -> Result<TokenData, 
                          let _ = s.send(());
                      }
                  });
-                 warp::reply::html("<h1>✓ Login Successful!</h1><p>You can close this window now.</p><script>setTimeout(() => window.close(), 1500)</script>")
+                 warp::reply::html("<h1>✓ Login Successful!</h1><p>You can close this window now.</p><script>setTimeout(() => window.close(), 1500)</script>".to_string())
             } else {
-                 warp::reply::html("<h1>Error</h1><p>No authorization code received.</p><script>setTimeout(() => window.close(), 3000)</script>")
+                 warp::reply::html("<h1>Error</h1><p>No authorization code received.</p><script>setTimeout(() => window.close(), 3000)</script>".to_string())
             }
         });
 
