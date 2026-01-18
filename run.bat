@@ -6,8 +6,11 @@ color 0B
 REM Create log directory if not exists
 if not exist "log" mkdir log
 
-REM Log function
+REM Clear old log file and start fresh
 set "LOG_FILE=log\log.txt"
+if exist "%LOG_FILE%" del "%LOG_FILE%"
+
+REM Start new log
 echo [%date% %time%] ========== APP STARTED ========== >> "%LOG_FILE%"
 
 echo ==================================================
