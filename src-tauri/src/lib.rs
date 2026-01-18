@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use warp::Filter;
+use std::fs::OpenOptions;
+use std::io::Write;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OAuthConfig {
@@ -26,10 +28,31 @@ pub struct TokenData {
     pub timestamp: Option<String>,
 }
 
-// Global state to manage the server shutdown if needed, or just let it timeout
-// struct AppState {
-//     // server_handle: Option<tokio::task::JoinHandle<()>>, 
-// }
+// Logging utility
+fn log_to_file(message: &str) {
+    let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    let log_message = format!("[{}] {}\n", timestamp, message);
+    
+    // Print to console
+    println!("{}", log_message.trim());
+    
+    // Write to log file
+    if let Ok(cwd) = std::env::current_dir() {
+        let log_path = cwd.join("log").join("log.txt");
+        
+        // Create log directory if not exists
+        if let Some(parent) = log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        
+        if let Ok(mut file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path) {
+            let _ = file.write_all(log_message.as_bytes());
+        }
+    }
+}
 
 #[tauri::command]
 async fn login_google(_app: AppHandle, config: OAuthConfig) -> Result<TokenData, String> {
