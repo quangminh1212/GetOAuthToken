@@ -12,6 +12,8 @@
 - 🚀 Xây dựng trên Tauri (nhẹ và nhanh, < 10MB)
 - 🔄 Hỗ trợ Refresh Token với offline access
 - ⚡ Khởi động nhanh (< 2 giây), Login flow < 5 giây
+- 📝 Logging chi tiết mọi bước vào `log/log.txt`
+- 📋 Logging chi tiết để debug và trace OAuth flow
 
 ## 📋 Yêu cầu hệ thống
 
@@ -33,6 +35,13 @@ run.bat
 npm install
 cd client && npm install && cd ..
 npm start
+```
+
+### Xem logs (để debug)
+```bash
+view-log.bat          # Xem toàn bộ log
+clear-log.bat         # Xóa log cũ
+type log\log.txt      # Xem log trực tiếp
 ```
 
 ## ⚙️ Cấu hình OAuth
@@ -73,16 +82,19 @@ File build: `src-tauri/target/release/`
 getoauthtoken/
 ├── client/              # React 19 + Vite + Tailwind
 │   ├── src/
-│   │   ├── App.jsx     # Component chính
+│   │   ├── App.jsx     # Component chính (có logging)
 │   │   └── main.jsx    # Entry point
 │   └── package.json
 ├── src-tauri/          # Rust + Tauri 2.9.5
 │   ├── src/
-│   │   ├── lib.rs      # OAuth logic
+│   │   ├── lib.rs      # OAuth logic (có logging chi tiết)
 │   │   └── main.rs     # Entry point
 │   └── Cargo.toml
-├── setup.bat           # Script cài đặt
-├── run.bat             # Script chạy
+├── log/                # Log files (auto-generated)
+│   └── log.txt         # Chi tiết từng bước OAuth flow
+├── setup.bat           # Script cài đặt (có logging)
+├── run.bat             # Script chạy (có logging)
+├── release.bat         # Script build release (có logging)
 └── package.json
 ```
 
@@ -91,9 +103,15 @@ getoauthtoken/
 ```bash
 npm start              # Development mode
 npm run build          # Build production
-test-all.bat          # Kiểm tra hệ thống
-test-build.bat        # Test build client
-cd client && npm run lint  # Lint code
+
+# Xem log
+type log\log.txt
+
+# Xem log realtime (PowerShell)
+Get-Content log\log.txt -Wait -Tail 20
+
+# Xóa log
+del log\log.txt
 ```
 
 ## 📝 Tokens được lưu
@@ -112,30 +130,114 @@ File `tokens.json` trong thư mục gốc:
 }
 ```
 
+### 🔄 Về Refresh Token
+
+**Refresh Token** cho phép lấy Access Token mới mà không cần user login lại.
+
+**Điều kiện nhận được Refresh Token:**
+- ✅ Lần đầu tiên user grant consent cho app
+- ✅ Có `access_type=offline` trong auth URL (đã có sẵn)
+- ✅ Có `prompt=consent` để force consent screen (đã có sẵn)
+
+**Nếu không nhận được Refresh Token:**
+1. Truy cập: https://myaccount.google.com/permissions
+2. Tìm app "GetOAuthToken" và click **Remove Access**
+3. Login lại trong app
+4. Kiểm tra `log/log.txt` để confirm có refresh_token
+
+**Kiểm tra trong log:**
+```
+- refresh_token: ✓ PRESENT (length: 103)
+```
+Hoặc:
+```
+- refresh_token: ✗ NOT PRESENT - This may happen if user already granted consent before
+  To get refresh_token: Revoke app access at https://myaccount.google.com/permissions
+```
+
+### 🔄 Về Refresh Token
+
+**Refresh Token** cho phép lấy Access Token mới mà không cần user login lại.
+
+**Khi nào nhận được Refresh Token?**
+- ✅ Lần đầu tiên user grant consent cho app
+- ✅ Code đã có `access_type=offline` và `prompt=consent` (đã tích hợp sẵn)
+
+**Không nhận được Refresh Token?**
+1. Kiểm tra log: `type log\log.txt`
+2. Tìm dòng: `refresh_token: ✗ NOT PRESENT`
+3. **Giải pháp**: Revoke app access và login lại
+   - Truy cập: https://myaccount.google.com/permissions
+   - Tìm app "GetOAuthToken" → Click "Remove Access"
+   - Login lại trong app
+
+**Sử dụng Refresh Token để lấy Access Token mới:**
+```bash
+curl -X POST https://oauth2.googleapis.com/token \
+  -d "client_id=YOUR_CLIENT_ID" \
+  -d "client_secret=YOUR_CLIENT_SECRET" \
+  -d "refresh_token=YOUR_REFRESH_TOKEN" \
+  -d "grant_type=refresh_token"
+```
+
 ## 🐛 Xử lý lỗi thường gặp
+
+### 📋 Kiểm tra Log
+
+**Mọi hoạt động được ghi vào `log/log.txt`**
+
+```bash
+# Xem log
+type log\log.txt
+
+# Xem 50 dòng cuối (PowerShell)
+Get-Content log\log.txt -Tail 50
+
+# Xem realtime (PowerShell)
+Get-Content log\log.txt -Wait -Tail 20
+```
+
+### Lỗi thường gặp
 
 | Lỗi | Giải pháp |
 |------|-----------|
-| "Client ID and Client Secret are required" | Cấu hình trong Settings trước |
-| "Failed to open browser" | Copy URL từ console và mở thủ công |
-| "Timeout waiting for login" | Hoàn thành đăng nhập trong 2 phút |
-| "Token exchange failed" | Kiểm tra Client Secret và Redirect URI |
-| Port 3000 đã được sử dụng | Đổi port hoặc kill process đang dùng |
-| "npm: command not found" | Cài đặt Node.js từ nodejs.org |
+| **redirect_uri_mismatch** | Kiểm tra log để xem redirect_uri đang dùng. Đảm bảo URI trong Google Console khớp chính xác: `http://localhost:3000/oauth/callback` |
+| **Client ID and Client Secret are required** | Cấu hình trong Settings. Kiểm tra log để confirm config đã lưu |
+| **Failed to open browser** | Copy URL từ console/log và mở thủ công |
+| **Timeout waiting for login** | Hoàn thành đăng nhập trong 2 phút. Log hiển thị thời gian còn lại |
+| **Token exchange failed** | Kiểm tra Client Secret và Redirect URI trong log |
+| **Không có refresh_token** | Xem log để biết lý do. Thường do đã grant consent trước. Revoke app tại https://myaccount.google.com/permissions |
+| **Port 3000 đã dùng** | Đổi port trong redirect_uri. Log hiển thị port đang dùng |
 
-### Debug tips
+### Debug Tips
+
 ```bash
-# Kiểm tra hệ thống
-test-all.bat
-
-# Xem console logs
-# Mở DevTools (F12) trong app
+# Xem log chi tiết
+type log\log.txt
 
 # Clean install
 rmdir /s /q node_modules
 rmdir /s /q client\node_modules
 npm install
 cd client && npm install
+
+# Xóa log để test fresh
+del log\log.txt
+```
+
+### Ví dụ Log Thành công
+
+```
+[2026-01-18 14:30:00] ========== OAUTH LOGIN STARTED ==========
+[2026-01-18 14:30:00] Client ID: 909905227025-qtk1u8j...***
+[2026-01-18 14:30:00] Redirect URI: http://localhost:3000/oauth/callback
+[2026-01-18 14:30:00] ✓ Config validation passed
+[2026-01-18 14:30:00] ✓ Browser opened successfully
+[2026-01-18 14:30:15] ✓ Authorization code received
+[2026-01-18 14:30:16] ✓ Token exchange successful (status: 200 OK)
+[2026-01-18 14:30:16]   - access_token: ya29.a0AfH6SMBvZ... (length: 183)
+[2026-01-18 14:30:16]   - refresh_token: ✓ PRESENT (length: 103)
+[2026-01-18 14:30:16] ========== OAUTH LOGIN COMPLETED SUCCESSFULLY ==========
 ```
 
 ## 🔒 Bảo mật
@@ -162,10 +264,12 @@ cd client && npm install
 
 ## 💡 Tips
 
-1. **Refresh Token**: Chỉ nhận được khi thêm `access_type=offline` và `prompt=consent`
-2. **Scope**: Thêm scope theo nhu cầu (Gmail, Drive, Calendar...)
-3. **Multiple Accounts**: Logout và login lại để đổi tài khoản
-4. **Token Expiry**: Access token hết hạn sau ~1 giờ, dùng refresh token để lấy mới
+1. **Logging**: Mọi hoạt động được ghi vào `log/log.txt` - xem khi gặp lỗi
+2. **Refresh Token**: Chỉ nhận được lần đầu grant consent. Kiểm tra log để confirm
+3. **Revoke để lấy lại Refresh Token**: https://myaccount.google.com/permissions
+4. **Scope**: Thêm scope theo nhu cầu (Gmail, Drive, Calendar...)
+5. **Multiple Accounts**: Logout và login lại để đổi tài khoản
+6. **Token Expiry**: Access token hết hạn sau ~1 giờ, dùng refresh token để lấy mới
 
 ## 📊 Tech Stack
 
