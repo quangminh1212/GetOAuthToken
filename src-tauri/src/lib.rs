@@ -27,12 +27,12 @@ pub struct TokenData {
 }
 
 // Global state to manage the server shutdown if needed, or just let it timeout
-struct AppState {
-    // server_handle: Option<tokio::task::JoinHandle<()>>, 
-}
+// struct AppState {
+//     // server_handle: Option<tokio::task::JoinHandle<()>>, 
+// }
 
 #[tauri::command]
-async fn login_google(app: AppHandle, config: OAuthConfig) -> Result<TokenData, String> {
+async fn login_google(_app: AppHandle, config: OAuthConfig) -> Result<TokenData, String> {
     // Validate config
     if config.client_id.is_empty() || config.client_secret.is_empty() {
         return Err("Client ID and Client Secret are required".to_string());
