@@ -5,6 +5,10 @@ tokens.json
 project_config.json
 .DS_Store
 
+# Logs
+log/*.txt
+!log/.gitkeep
+
 # Build outputs
 release/
 src-tauri/target/
