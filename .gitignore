@@ -9,6 +9,7 @@ project_config.json
 log/log.txt
 log/*.txt
 !log/.gitkeep
+src-tauri/log/
 
 # Build outputs
 release/
