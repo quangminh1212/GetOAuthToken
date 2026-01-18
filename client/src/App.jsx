@@ -31,16 +31,16 @@ function App() {
   const [error, setError] = useState(null);
   const [notification, setNotification] = useState(null);
   const [config, setConfig] = useState({
-    client_id: '',
-    client_secret: '',
-    auth_url: 'https://accounts.google.com/o/oauth2/v2/auth',
-    token_url: 'https://oauth2.googleapis.com/token',
-    redirect_uri: 'http://localhost:3000/oauth/callback',
-    scope: 'email profile openid'
+    client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
+    client_secret: import.meta.env.VITE_GOOGLE_CLIENT_SECRET || '',
+    auth_url: import.meta.env.VITE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth',
+    token_url: import.meta.env.VITE_TOKEN_URL || 'https://oauth2.googleapis.com/token',
+    redirect_uri: import.meta.env.VITE_REDIRECT_URI || 'http://localhost:3000/oauth/callback',
+    scope: import.meta.env.VITE_SCOPE || 'email profile openid'
   });
 
   useEffect(() => {
-    // Try to load config from localStorage
+    // Try to load config from localStorage (overrides .env if exists)
     const savedConfig = localStorage.getItem('oauth_config');
     if (savedConfig) {
       setConfig(JSON.parse(savedConfig));
