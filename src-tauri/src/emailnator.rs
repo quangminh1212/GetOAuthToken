@@ -6,7 +6,6 @@ use rand::Rng;
 #[derive(Debug, Clone)]
 pub struct EmailnatorClient {
     client: Client,
-    xsrf_token: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -29,20 +28,27 @@ pub struct InboxData {
     pub message_data: Vec<InboxMessage>,
 }
 
+// 1secmail API structures
+#[derive(Debug, Deserialize)]
+struct SecMailMessage {
+    id: i64,
+    from: String,
+    subject: String,
+    date: String,
+}
+
 impl EmailnatorClient {
     pub fn new() -> Self {
         Self {
             client: Client::builder()
-                .cookie_store(true)
-                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .build()
                 .unwrap(),
-            xsrf_token: None,
         }
     }
 
-    // Generate a random temp email as fallback
-    fn generate_random_email() -> String {
+    // Generate random email using 1secmail API
+    fn generate_random_username() -> String {
         let mut rng = rand::thread_rng();
         let random_name: String = (0..10)
             .map(|_| {
@@ -50,156 +56,106 @@ impl EmailnatorClient {
                 (b'a' + idx) as char
             })
             .collect();
-        format!("{}@gmail.com", random_name)
-    }
-
-    async fn get_xsrf_token(&mut self) -> Result<(), Box<dyn Error>> {
-        let response = self.client
-            .get("https://www.emailnator.com/")
-            .send()
-            .await?;
-
-        println!("Homepage status: {}", response.status());
-        
-        // Extract XSRF token from cookies
-        let headers = response.headers();
-        for (name, value) in headers.iter() {
-            if name.as_str().to_lowercase() == "set-cookie" {
-                if let Ok(cookie_str) = value.to_str() {
-                    println!("Cookie: {}", cookie_str);
-                    if let Some(xsrf) = cookie_str.split("XSRF-TOKEN=").nth(1) {
-                        if let Some(token) = xsrf.split(';').next() {
-                            let decoded = urlencoding::decode(token)?.to_string();
-                            println!("XSRF Token found: {}", decoded);
-                            self.xsrf_token = Some(decoded);
-                        }
-                    }
-                }
-            }
-        }
-
-        if self.xsrf_token.is_none() {
-            println!("Warning: No XSRF token found");
-        }
-
-        Ok(())
+        random_name
     }
 
     pub async fn generate_email(&mut self) -> Result<EmailData, Box<dyn Error>> {
-        // Try Emailnator API first
-        match self.try_emailnator_api().await {
-            Ok(email_data) => return Ok(email_data),
-            Err(e) => {
-                println!("Emailnator API failed: {}. Using fallback...", e);
-            }
+        println!("Generating email using 1secmail API...");
+        
+        // Generate random username
+        let username = Self::generate_random_username();
+        
+        // Get available domains from 1secmail
+        let domains_response = self.client
+            .get("https://www.1secmail.com/api/v1/?action=getDomainList")
+            .send()
+            .await?;
+        
+        let domains: Vec<String> = domains_response.json().await?;
+        
+        if domains.is_empty() {
+            return Err("No domains available from 1secmail".into());
         }
-
-        // Fallback: Generate random temp email
-        let random_email = Self::generate_random_email();
-        println!("Generated fallback email: {}", random_email);
+        
+        // Use first domain (usually 1secmail.com, 1secmail.org, etc.)
+        let email = format!("{}@{}", username, domains[0]);
+        
+        println!("✓ Generated email: {}", email);
         
         Ok(EmailData {
-            email: vec![random_email],
+            email: vec![email],
         })
     }
 
-    async fn try_emailnator_api(&mut self) -> Result<EmailData, Box<dyn Error>> {
-        // Get XSRF token first
-        self.get_xsrf_token().await?;
-
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("X-Requested-With", "XMLHttpRequest".parse()?);
-        headers.insert("Accept", "application/json".parse()?);
-        headers.insert("Origin", "https://www.emailnator.com".parse()?);
-        headers.insert("Referer", "https://www.emailnator.com/".parse()?);
-        
-        if let Some(ref token) = self.xsrf_token {
-            headers.insert("X-XSRF-TOKEN", token.parse()?);
-        }
-
-        let response = self.client
-            .post("https://www.emailnator.com/generate-email")
-            .headers(headers)
-            .send()
-            .await?;
-
-        let status = response.status();
-        let response_text = response.text().await?;
-        
-        println!("API Response Status: {}", status);
-        println!("API Response Body: {}", response_text);
-        
-        if response_text.is_empty() {
-            return Err("Empty response from Emailnator API".into());
-        }
-
-        let email_data: EmailData = serde_json::from_str(&response_text)?;
-        Ok(email_data)
-    }
-
     pub async fn get_inbox(&self, email: &str) -> Result<InboxData, Box<dyn Error>> {
-        // For fallback emails (@gmail.com), return mock data
-        if email.contains("@gmail.com") {
-            println!("Using mock inbox for fallback email: {}", email);
-            return Ok(InboxData {
-                message_data: vec![
-                    InboxMessage {
-                        message_id: "mock_1".to_string(),
-                        from: "Google <no-reply@google.com>".to_string(),
-                        subject: "Your Google verification code".to_string(),
-                        time: "Just Now".to_string(),
-                    }
-                ],
-            });
-        }
-
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("Content-Type", "application/json".parse()?);
-        headers.insert("X-Requested-With", "XMLHttpRequest".parse()?);
+        println!("Fetching inbox for: {}", email);
         
-        if let Some(ref token) = self.xsrf_token {
-            headers.insert("X-XSRF-TOKEN", token.parse()?);
+        // Parse email to get username and domain
+        let parts: Vec<&str> = email.split('@').collect();
+        if parts.len() != 2 {
+            return Err("Invalid email format".into());
         }
-
-        let response = self.client
-            .post("https://www.emailnator.com/message-list")
-            .headers(headers)
-            .json(&serde_json::json!({ "email": email }))
-            .send()
-            .await?;
-
-        let inbox_data: InboxData = response.json().await?;
-        Ok(inbox_data)
+        
+        let username = parts[0];
+        let domain = parts[1];
+        
+        // Fetch messages from 1secmail API
+        let url = format!(
+            "https://www.1secmail.com/api/v1/?action=getMessages&login={}&domain={}",
+            username, domain
+        );
+        
+        let response = self.client.get(&url).send().await?;
+        let messages: Vec<SecMailMessage> = response.json().await?;
+        
+        println!("✓ Found {} messages", messages.len());
+        
+        // Convert to our format
+        let message_data: Vec<InboxMessage> = messages
+            .into_iter()
+            .map(|msg| InboxMessage {
+                message_id: msg.id.to_string(),
+                from: msg.from,
+                subject: msg.subject,
+                time: msg.date,
+            })
+            .collect();
+        
+        Ok(InboxData { message_data })
     }
 
     pub async fn get_message(&self, email: &str, message_id: &str) -> Result<String, Box<dyn Error>> {
-        // For fallback emails (@gmail.com), return mock verification code
-        if email.contains("@gmail.com") && message_id == "mock_1" {
-            println!("Generating mock verification code for: {}", email);
-            let mut rng = rand::thread_rng();
-            let code: u32 = rng.gen_range(100000..999999);
-            return Ok(format!("<html><body><div style='font-family: Arial; padding: 20px;'><h2>Google Verification</h2><p>Your verification code is:</p><h1 style='color: #4285f4; font-size: 48px;'>{}</h1><p>This code will expire in 10 minutes.</p></div></body></html>", code));
-        }
-
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("Content-Type", "application/json".parse()?);
-        headers.insert("X-Requested-With", "XMLHttpRequest".parse()?);
+        println!("Fetching message {} for: {}", message_id, email);
         
-        if let Some(ref token) = self.xsrf_token {
-            headers.insert("X-XSRF-TOKEN", token.parse()?);
+        // Parse email
+        let parts: Vec<&str> = email.split('@').collect();
+        if parts.len() != 2 {
+            return Err("Invalid email format".into());
         }
-
-        let response = self.client
-            .post("https://www.emailnator.com/message-list")
-            .headers(headers)
-            .json(&serde_json::json!({
-                "email": email,
-                "messageID": message_id
-            }))
-            .send()
-            .await?;
-
-        let content = response.text().await?;
+        
+        let username = parts[0];
+        let domain = parts[1];
+        
+        // Fetch message content from 1secmail API
+        let url = format!(
+            "https://www.1secmail.com/api/v1/?action=readMessage&login={}&domain={}&id={}",
+            username, domain, message_id
+        );
+        
+        let response = self.client.get(&url).send().await?;
+        let message: serde_json::Value = response.json().await?;
+        
+        // Extract text or HTML body
+        let content = if let Some(html) = message.get("htmlBody").and_then(|v| v.as_str()) {
+            html.to_string()
+        } else if let Some(text) = message.get("textBody").and_then(|v| v.as_str()) {
+            format!("<html><body><pre>{}</pre></body></html>", text)
+        } else {
+            message.to_string()
+        };
+        
+        println!("✓ Message content retrieved");
+        
         Ok(content)
     }
 }
