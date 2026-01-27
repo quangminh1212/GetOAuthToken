@@ -5,6 +5,7 @@
 ## ✨ Tính năng
 
 - 🔐 Xác thực OAuth 2.0 an toàn với Google
+- 📧 **MỚI**: Tích hợp Emailnator - Tạo email tạm thời để testing
 - 🎨 Giao diện đẹp mắt với Tailwind CSS (Glass morphism design)
 - 💾 Tự động lưu tokens vào file JSON
 - 📋 Copy tokens dễ dàng với một click
@@ -13,7 +14,7 @@
 - 🔄 Hỗ trợ Refresh Token với offline access
 - ⚡ Khởi động nhanh (< 2 giây), Login flow < 5 giây
 - 📝 Logging chi tiết mọi bước vào `log/log.txt`
-- 📋 Logging chi tiết để debug và trace OAuth flow
+- 🔍 Tự động trích xuất verification code từ email
 
 ## 📋 Yêu cầu hệ thống
 
@@ -36,6 +37,21 @@ npm install
 cd client && npm install && cd ..
 npm start
 ```
+
+## 📧 Sử dụng Email Tạm (Emailnator)
+
+### Tạo email tạm thời:
+1. Click icon Email (✉️) trên header
+2. Click "Generate Email"
+3. Copy email address được tạo
+
+### Sử dụng với OAuth:
+1. Tạo email tạm từ Emailnator
+2. Dùng email đó để đăng nhập Google
+3. Quay lại app, click "Refresh Inbox" để nhận verification code
+4. Code sẽ tự động được copy vào clipboard
+
+**Chi tiết**: Xem [QUICKSTART.md](./QUICKSTART.md) và [CHANGELOG.md](./CHANGELOG.md)
 
 ### Xem logs (để debug)
 ```bash
@@ -82,16 +98,18 @@ File build: `src-tauri/target/release/`
 getoauthtoken/
 ├── client/              # React 19 + Vite + Tailwind
 │   ├── src/
-│   │   ├── App.jsx     # Component chính (có logging)
+│   │   ├── App.jsx     # Component chính (có logging + Emailnator UI)
 │   │   └── main.jsx    # Entry point
 │   └── package.json
 ├── src-tauri/          # Rust + Tauri 2.9.5
 │   ├── src/
-│   │   ├── lib.rs      # OAuth logic (có logging chi tiết)
+│   │   ├── lib.rs      # OAuth logic + Emailnator commands
+│   │   ├── emailnator.rs  # Emailnator API wrapper
 │   │   └── main.rs     # Entry point
 │   └── Cargo.toml
 ├── log/                # Log files (auto-generated)
-│   └── log.txt         # Chi tiết từng bước OAuth flow
+│   └── log.txt         # Chi tiết từng bước OAuth flow + Emailnator
+├── EMAILNATOR_INTEGRATION.md  # Hướng dẫn sử dụng Emailnator
 ├── setup.bat           # Script cài đặt (có logging)
 ├── run.bat             # Script chạy (có logging)
 ├── release.bat         # Script build release (có logging)
@@ -280,17 +298,24 @@ del log\log.txt
 
 ## 🔮 Roadmap
 
-### v1.1.0 (Q1 2026)
+### v1.1.0 (Q1 2026) - ✅ COMPLETED
+- ✅ Emailnator integration - Temp email support
+- ✅ Auto verification code extraction
+- ✅ Inbox management UI
+
+### v1.2.0 (Q2 2026)
 - GitHub OAuth support
 - Microsoft OAuth support
 - Token refresh UI
 - Dark/Light theme toggle
+- Multiple temp email providers
 
-### v1.2.0 (Q2 2026)
+### v1.3.0 (Q3 2026)
 - Multiple profiles
 - Token history
 - Export formats (ENV, YAML)
 - CLI mode
+- SMS verification support
 
 ## 📄 License
 
