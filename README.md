@@ -51,8 +51,6 @@ npm start
 3. Quay lại app, click "Refresh Inbox" để nhận verification code
 4. Code sẽ tự động được copy vào clipboard
 
-**Chi tiết**: Xem [QUICKSTART.md](./QUICKSTART.md) và [CHANGELOG.md](./CHANGELOG.md)
-
 ### Xem logs (để debug)
 ```bash
 view-log.bat          # Xem toàn bộ log
