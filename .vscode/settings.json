@@ -235,6 +235,7 @@
         "Get-Content *",
         "type *",
         "tasklist *",
-        "git *"
+        "git *",
+        "Get-Service *"
     ]
 }
