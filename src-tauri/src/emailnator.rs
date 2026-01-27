@@ -35,19 +35,6 @@ struct GuerrillaResponse {
     sid_token: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct GuerrillaEmail {
-    mail_id: String,
-    mail_from: String,
-    mail_subject: String,
-    mail_timestamp: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct GuerrillaEmailDetail {
-    mail_body: String,
-}
-
 impl EmailnatorClient {
     pub fn new() -> Self {
         Self {
