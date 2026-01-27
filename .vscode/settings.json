@@ -230,6 +230,11 @@
         "pacman *",
         "zypper *",
         "snap *",
-        "flatpak *"
+        "flatpak *",
+        ".\\test-tempmail.bat *",
+        "Get-Content *",
+        "type *",
+        "tasklist *",
+        "git *"
     ]
 }
