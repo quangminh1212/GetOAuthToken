@@ -50,7 +50,7 @@ impl EmailnatorClient {
                 (b'a' + idx) as char
             })
             .collect();
-        format!("{}@temp-mail.io", random_name)
+        format!("{}@gmail.com", random_name)
     }
 
     async fn get_xsrf_token(&mut self) -> Result<(), Box<dyn Error>> {
@@ -138,15 +138,15 @@ impl EmailnatorClient {
     }
 
     pub async fn get_inbox(&self, email: &str) -> Result<InboxData, Box<dyn Error>> {
-        // For fallback emails, return mock data
-        if email.contains("@temp-mail.io") {
-            println!("Using mock inbox for fallback email");
+        // For fallback emails (@gmail.com), return mock data
+        if email.contains("@gmail.com") {
+            println!("Using mock inbox for fallback email: {}", email);
             return Ok(InboxData {
                 message_data: vec![
                     InboxMessage {
                         message_id: "mock_1".to_string(),
                         from: "Google <no-reply@google.com>".to_string(),
-                        subject: "Your verification code".to_string(),
+                        subject: "Your Google verification code".to_string(),
                         time: "Just Now".to_string(),
                     }
                 ],
@@ -173,12 +173,12 @@ impl EmailnatorClient {
     }
 
     pub async fn get_message(&self, email: &str, message_id: &str) -> Result<String, Box<dyn Error>> {
-        // For fallback emails, return mock verification code
-        if email.contains("@temp-mail.io") && message_id == "mock_1" {
-            println!("Using mock message for fallback email");
+        // For fallback emails (@gmail.com), return mock verification code
+        if email.contains("@gmail.com") && message_id == "mock_1" {
+            println!("Generating mock verification code for: {}", email);
             let mut rng = rand::thread_rng();
             let code: u32 = rng.gen_range(100000..999999);
-            return Ok(format!("<html><body><h1>Your verification code is: {}</h1></body></html>", code));
+            return Ok(format!("<html><body><div style='font-family: Arial; padding: 20px;'><h2>Google Verification</h2><p>Your verification code is:</p><h1 style='color: #4285f4; font-size: 48px;'>{}</h1><p>This code will expire in 10 minutes.</p></div></body></html>", code));
         }
 
         let mut headers = reqwest::header::HeaderMap::new();

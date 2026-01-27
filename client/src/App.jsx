@@ -396,17 +396,24 @@ function App() {
                         {loadingEmail ? 'Generating...' : 'Generate Temp Email'}
                       </button>
                     ) : (
-                      <div className="p-4 bg-black/40 rounded-lg border border-white/10">
-                        <div className="flex justify-between items-center mb-2">
-                          <label className="text-xs text-gray-400 uppercase">Your Temp Email</label>
-                          <button 
-                            onClick={() => copyToClipboard(tempEmail)}
-                            className="text-accent hover:text-white"
-                          >
-                            <CopyIcon />
-                          </button>
+                      <div className="space-y-2">
+                        <div className="p-4 bg-black/40 rounded-lg border border-white/10">
+                          <div className="flex justify-between items-center mb-2">
+                            <label className="text-xs text-gray-400 uppercase">Your Temp Email</label>
+                            <button 
+                              onClick={() => copyToClipboard(tempEmail)}
+                              className="text-accent hover:text-white"
+                            >
+                              <CopyIcon />
+                            </button>
+                          </div>
+                          <p className="text-sm font-mono text-white break-all">{tempEmail}</p>
                         </div>
-                        <p className="text-sm font-mono text-white break-all">{tempEmail}</p>
+                        <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                          <p className="text-xs text-blue-300">
+                            ℹ️ This is a demo email. Click "Refresh Inbox" to see a mock verification email.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -458,6 +465,11 @@ function App() {
                       {showCodeInput && (
                         <div className="space-y-4">
                           <h3 className="text-sm font-semibold text-gray-300">Step 3: Enter Verification Code</h3>
+                          <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg mb-3">
+                            <p className="text-xs text-green-300">
+                              ✓ Code auto-filled! You can edit it if needed.
+                            </p>
+                          </div>
                           <input
                             type="text"
                             value={verificationCode}
@@ -479,7 +491,7 @@ function App() {
                   )}
 
                   <p className="text-xs text-gray-500 text-center">
-                    Use temp email to receive verification code from Gmail
+                    Demo mode: Email and verification code are generated for testing
                   </p>
                 </div>
               )}
