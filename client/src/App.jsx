@@ -30,6 +30,10 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [error, setError] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [showEmailnator, setShowEmailnator] = useState(false);
+  const [tempEmail, setTempEmail] = useState(null);
+  const [emailInbox, setEmailInbox] = useState([]);
+  const [loadingEmail, setLoadingEmail] = useState(false);
   const [config, setConfig] = useState({
     client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
     client_secret: import.meta.env.VITE_GOOGLE_CLIENT_SECRET || '',
@@ -99,6 +103,58 @@ function App() {
     }
   };
 
+  const handleGenerateTempEmail = async () => {
+    setLoadingEmail(true);
+    try {
+      const result = await invoke('generate_temp_email');
+      if (result.email && result.email.length > 0) {
+        setTempEmail(result.email[0]);
+        showNotification('Temp email generated!');
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('Failed to generate email', 'error');
+    } finally {
+      setLoadingEmail(false);
+    }
+  };
+
+  const handleRefreshInbox = async () => {
+    if (!tempEmail) return;
+    setLoadingEmail(true);
+    try {
+      const result = await invoke('get_email_inbox', { email: tempEmail });
+      setEmailInbox(result.message_data || []);
+      showNotification(`Found ${result.message_data?.length || 0} messages`);
+    } catch (error) {
+      console.error(error);
+      showNotification('Failed to fetch inbox', 'error');
+    } finally {
+      setLoadingEmail(false);
+    }
+  };
+
+  const handleViewMessage = async (messageId) => {
+    try {
+      const content = await invoke('get_email_message', { 
+        email: tempEmail, 
+        messageId: messageId 
+      });
+      // Extract verification code if present
+      const codeMatch = content.match(/(\d{6,7})/);
+      if (codeMatch) {
+        showNotification(`Verification code: ${codeMatch[1]}`);
+        await copyToClipboard(codeMatch[1]);
+      } else {
+        showNotification('Message loaded (check console for content)');
+        console.log('Message content:', content);
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('Failed to load message', 'error');
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center text-white relative">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
@@ -113,6 +169,97 @@ function App() {
       )}
 
       <div className="relative z-10 w-full max-w-md">
+        {/* Emailnator Modal */}
+        {showEmailnator && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
+            <div className="bg-[#1a1a1a]/90 border border-white/10 p-6 rounded-2xl w-full max-w-lg shadow-2xl max-h-[80vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold font-sans text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">
+                  Temp Email - Emailnator
+                </h2>
+                <button 
+                  onClick={() => setShowEmailnator(false)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {!tempEmail ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-400 mb-4">Generate a temporary email address</p>
+                  <button
+                    onClick={handleGenerateTempEmail}
+                    disabled={loadingEmail}
+                    className="px-6 py-3 bg-accent hover:bg-opacity-80 rounded-lg font-semibold shadow-lg transition-all"
+                  >
+                    {loadingEmail ? 'Generating...' : 'Generate Email'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="p-4 bg-black/40 rounded-lg border border-white/10">
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="text-xs text-gray-400 uppercase">Your Temp Email</label>
+                      <button 
+                        onClick={() => copyToClipboard(tempEmail)}
+                        className="text-accent hover:text-white"
+                      >
+                        <CopyIcon />
+                      </button>
+                    </div>
+                    <p className="text-sm font-mono text-white break-all">{tempEmail}</p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleRefreshInbox}
+                      disabled={loadingEmail}
+                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-semibold transition-all"
+                    >
+                      {loadingEmail ? 'Loading...' : 'Refresh Inbox'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setTempEmail(null);
+                        setEmailInbox([]);
+                      }}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-sm font-semibold transition-all"
+                    >
+                      New Email
+                    </button>
+                  </div>
+
+                  {emailInbox.length > 0 && (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-semibold text-gray-300">Inbox ({emailInbox.length})</h3>
+                      {emailInbox.map((msg, idx) => (
+                        <div 
+                          key={idx}
+                          onClick={() => handleViewMessage(msg.message_id)}
+                          className="p-3 bg-black/40 rounded-lg border border-white/10 hover:border-accent cursor-pointer transition-all"
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <p className="text-sm font-medium text-white">{msg.from}</p>
+                            <span className="text-xs text-gray-500">{msg.time}</span>
+                          </div>
+                          <p className="text-xs text-gray-400">{msg.subject}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {emailInbox.length === 0 && (
+                    <div className="text-center py-8 text-gray-500 text-sm">
+                      No messages yet. Click "Refresh Inbox" to check.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Settings Modal */}
         {showSettings && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
@@ -181,9 +328,20 @@ function App() {
               </h1>
               <p className="text-sm text-gray-400 mt-1">Token Manager</p>
             </div>
-            <button onClick={() => setShowSettings(true)} className="p-2 rounded-full hover:bg-white/5 transition-colors">
-              <SettingsIcon />
-            </button>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setShowEmailnator(true)} 
+                className="p-2 rounded-full hover:bg-white/5 transition-colors"
+                title="Temp Email"
+              >
+                <svg className="w-5 h-5 text-gray-400 hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </button>
+              <button onClick={() => setShowSettings(true)} className="p-2 rounded-full hover:bg-white/5 transition-colors">
+                <SettingsIcon />
+              </button>
+            </div>
           </div>
 
           {!tokenData ? (
