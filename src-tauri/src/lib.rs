@@ -7,14 +7,6 @@ use warp::Filter;
 use std::fs::OpenOptions;
 use std::io::Write;
 
-mod emailnator;
-use emailnator::{EmailnatorClient, EmailData, InboxData};
-
-// Global state for email client
-lazy_static::lazy_static! {
-    static ref EMAIL_CLIENT: Arc<Mutex<EmailnatorClient>> = Arc::new(Mutex::new(EmailnatorClient::new()));
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OAuthConfig {
     pub client_id: String,
@@ -295,75 +287,13 @@ async fn login_google(_app: AppHandle, config: OAuthConfig) -> Result<TokenData,
     Ok(token_data)
 }
 
-// Emailnator commands
-#[tauri::command]
-async fn generate_temp_email() -> Result<EmailData, String> {
-    log_to_file("========== GENERATING TEMP EMAIL ==========");
-    
-    let mut client = EMAIL_CLIENT.lock().await;
-    let email_data = client.generate_email()
-        .await
-        .map_err(|e| {
-            log_to_file(&format!("ERROR: Failed to generate email: {}", e));
-            format!("Failed to generate email: {}", e)
-        })?;
-    
-    if let Some(email) = email_data.email.first() {
-        log_to_file(&format!("✓ Generated temp email: {}", email));
-    }
-    
-    log_to_file("========== TEMP EMAIL GENERATED ==========\n");
-    Ok(email_data)
-}
-
-#[tauri::command]
-async fn get_email_inbox(email: String) -> Result<InboxData, String> {
-    log_to_file(&format!("========== FETCHING INBOX FOR: {} ==========", email));
-    
-    let client = EMAIL_CLIENT.lock().await;
-    let inbox_data = client.get_inbox(&email)
-        .await
-        .map_err(|e| {
-            log_to_file(&format!("ERROR: Failed to fetch inbox: {}", e));
-            format!("Failed to fetch inbox: {}", e)
-        })?;
-    
-    log_to_file(&format!("✓ Found {} messages", inbox_data.message_data.len()));
-    log_to_file("========== INBOX FETCHED ==========\n");
-    
-    Ok(inbox_data)
-}
-
-#[tauri::command]
-async fn get_email_message(email: String, message_id: String) -> Result<String, String> {
-    log_to_file(&format!("========== FETCHING MESSAGE: {} ==========", message_id));
-    
-    let client = EMAIL_CLIENT.lock().await;
-    let content = client.get_message(&email, &message_id)
-        .await
-        .map_err(|e| {
-            log_to_file(&format!("ERROR: Failed to fetch message: {}", e));
-            format!("Failed to fetch message: {}", e)
-        })?;
-    
-    log_to_file("✓ Message content retrieved");
-    log_to_file("========== MESSAGE FETCHED ==========\n");
-    
-    Ok(content)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
-    .invoke_handler(tauri::generate_handler![
-        login_google,
-        generate_temp_email,
-        get_email_inbox,
-        get_email_message
-    ])
+    .invoke_handler(tauri::generate_handler![login_google])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }

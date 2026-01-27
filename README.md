@@ -5,7 +5,6 @@
 ## ✨ Tính năng
 
 - 🔐 Xác thực OAuth 2.0 an toàn với Google
-- 📧 **MỚI**: Tích hợp Emailnator - Tạo email tạm thời để testing
 - 🎨 Giao diện đẹp mắt với Tailwind CSS (Glass morphism design)
 - 💾 Tự động lưu tokens vào file JSON
 - 📋 Copy tokens dễ dàng với một click
@@ -14,7 +13,7 @@
 - 🔄 Hỗ trợ Refresh Token với offline access
 - ⚡ Khởi động nhanh (< 2 giây), Login flow < 5 giây
 - 📝 Logging chi tiết mọi bước vào `log/log.txt`
-- 🔍 Tự động trích xuất verification code từ email
+- 📋 Logging chi tiết để debug và trace OAuth flow
 
 ## 📋 Yêu cầu hệ thống
 
@@ -37,33 +36,6 @@ npm install
 cd client && npm install && cd ..
 npm start
 ```
-
-## 📧 Sử dụng Email Tạm
-
-### Tự động hoạt động với API miễn phí (1secmail)
-- Không cần cấu hình gì, chỉ cần click "Generate Temp Email"
-- Sử dụng API miễn phí từ 1secmail.com
-
-### (Tùy chọn) Nâng cấp lên Gmailnator RapidAPI
-Nếu muốn dùng email @gmail.com thật:
-1. Đăng ký tài khoản tại [RapidAPI](https://rapidapi.com/)
-2. Subscribe API [Gmailnator](https://rapidapi.com/johndevz/api/gmailnator)
-3. Copy API Key của bạn
-4. Tạo file `.env` trong thư mục gốc:
-   ```bash
-   RAPIDAPI_KEY=your_api_key_here
-   ```
-
-### Tạo email tạm thời:
-1. Chọn "Gmail with Verification Code"
-2. Click "Generate Temp Email"
-3. Email sẽ được tạo tự động (1secmail hoặc Gmail tùy cấu hình)
-
-### Sử dụng với OAuth:
-1. Tạo email tạm
-2. Dùng email đó để đăng nhập Google
-3. Click "Refresh Inbox" để nhận verification code
-4. Code sẽ tự động được trích xuất và copy
 
 ### Xem logs (để debug)
 ```bash
@@ -110,18 +82,16 @@ File build: `src-tauri/target/release/`
 getoauthtoken/
 ├── client/              # React 19 + Vite + Tailwind
 │   ├── src/
-│   │   ├── App.jsx     # Component chính (có logging + Emailnator UI)
+│   │   ├── App.jsx     # Component chính (có logging)
 │   │   └── main.jsx    # Entry point
 │   └── package.json
 ├── src-tauri/          # Rust + Tauri 2.9.5
 │   ├── src/
-│   │   ├── lib.rs      # OAuth logic + Emailnator commands
-│   │   ├── emailnator.rs  # Emailnator API wrapper
+│   │   ├── lib.rs      # OAuth logic (có logging chi tiết)
 │   │   └── main.rs     # Entry point
 │   └── Cargo.toml
 ├── log/                # Log files (auto-generated)
-│   └── log.txt         # Chi tiết từng bước OAuth flow + Emailnator
-├── EMAILNATOR_INTEGRATION.md  # Hướng dẫn sử dụng Emailnator
+│   └── log.txt         # Chi tiết từng bước OAuth flow
 ├── setup.bat           # Script cài đặt (có logging)
 ├── run.bat             # Script chạy (có logging)
 ├── release.bat         # Script build release (có logging)
@@ -310,24 +280,17 @@ del log\log.txt
 
 ## 🔮 Roadmap
 
-### v1.1.0 (Q1 2026) - ✅ COMPLETED
-- ✅ Emailnator integration - Temp email support
-- ✅ Auto verification code extraction
-- ✅ Inbox management UI
-
-### v1.2.0 (Q2 2026)
+### v1.1.0 (Q1 2026)
 - GitHub OAuth support
 - Microsoft OAuth support
 - Token refresh UI
 - Dark/Light theme toggle
-- Multiple temp email providers
 
-### v1.3.0 (Q3 2026)
+### v1.2.0 (Q2 2026)
 - Multiple profiles
 - Token history
 - Export formats (ENV, YAML)
 - CLI mode
-- SMS verification support
 
 ## 📄 License
 
