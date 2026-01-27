@@ -38,15 +38,24 @@ cd client && npm install && cd ..
 npm start
 ```
 
-## 📧 Sử dụng Email Tạm (Emailnator)
+## 📧 Sử dụng Email Tạm (Gmailnator via RapidAPI)
+
+### Cấu hình API Key:
+1. Đăng ký tài khoản tại [RapidAPI](https://rapidapi.com/)
+2. Subscribe API [Gmailnator](https://rapidapi.com/johndevz/api/gmailnator)
+3. Copy API Key của bạn
+4. Tạo file `.env` trong thư mục gốc:
+   ```bash
+   RAPIDAPI_KEY=your_api_key_here
+   ```
 
 ### Tạo email tạm thời:
-1. Click icon Email (✉️) trên header
-2. Click "Generate Email"
+1. Click icon Email (✉️) hoặc chọn "Gmail with Verification Code"
+2. Click "Generate Temp Email"
 3. Copy email address được tạo
 
 ### Sử dụng với OAuth:
-1. Tạo email tạm từ Emailnator
+1. Tạo email tạm từ Gmailnator
 2. Dùng email đó để đăng nhập Google
 3. Quay lại app, click "Refresh Inbox" để nhận verification code
 4. Code sẽ tự động được copy vào clipboard

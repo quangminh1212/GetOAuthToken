@@ -1,11 +1,11 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use rand::Rng;
 
 #[derive(Debug, Clone)]
 pub struct EmailnatorClient {
     client: Client,
+    api_key: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,96 +28,103 @@ pub struct InboxData {
     pub message_data: Vec<InboxMessage>,
 }
 
-// 1secmail API structures
+// RapidAPI Gmailnator response structures
 #[derive(Debug, Deserialize)]
-struct SecMailMessage {
-    id: i64,
+struct GmailnatorEmailResponse {
+    email: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GmailnatorMessage {
+    #[serde(rename = "messageID")]
+    message_id: String,
     from: String,
     subject: String,
-    date: String,
+    time: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GmailnatorInboxResponse {
+    #[serde(rename = "messageData")]
+    message_data: Vec<GmailnatorMessage>,
 }
 
 impl EmailnatorClient {
     pub fn new() -> Self {
+        // Get API key from environment or use default
+        let api_key = std::env::var("RAPIDAPI_KEY")
+            .unwrap_or_else(|_| "YOUR_RAPIDAPI_KEY".to_string());
+        
         Self {
             client: Client::builder()
                 .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .build()
                 .unwrap(),
+            api_key,
         }
-    }
-
-    // Generate random email using 1secmail API
-    fn generate_random_username() -> String {
-        let mut rng = rand::thread_rng();
-        let random_name: String = (0..10)
-            .map(|_| {
-                let idx = rng.gen_range(0..26);
-                (b'a' + idx) as char
-            })
-            .collect();
-        random_name
     }
 
     pub async fn generate_email(&mut self) -> Result<EmailData, Box<dyn Error>> {
-        println!("Generating email using 1secmail API...");
+        println!("Generating email using Gmailnator RapidAPI...");
         
-        // Generate random username
-        let username = Self::generate_random_username();
-        
-        // Get available domains from 1secmail
-        let domains_response = self.client
-            .get("https://www.1secmail.com/api/v1/?action=getDomainList")
+        let response = self.client
+            .get("https://gmailnator.p.rapidapi.com/generate-email")
+            .header("X-RapidAPI-Key", &self.api_key)
+            .header("X-RapidAPI-Host", "gmailnator.p.rapidapi.com")
             .send()
             .await?;
+
+        let status = response.status();
+        println!("API Response Status: {}", status);
+
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            return Err(format!("API Error ({}): {}", status, error_text).into());
+        }
+
+        let email_response: GmailnatorEmailResponse = response.json().await?;
         
-        let domains: Vec<String> = domains_response.json().await?;
-        
-        if domains.is_empty() {
-            return Err("No domains available from 1secmail".into());
+        if let Some(email) = email_response.email.first() {
+            println!("✓ Generated email: {}", email);
         }
         
-        // Use first domain (usually 1secmail.com, 1secmail.org, etc.)
-        let email = format!("{}@{}", username, domains[0]);
-        
-        println!("✓ Generated email: {}", email);
-        
         Ok(EmailData {
-            email: vec![email],
+            email: email_response.email,
         })
     }
 
     pub async fn get_inbox(&self, email: &str) -> Result<InboxData, Box<dyn Error>> {
         println!("Fetching inbox for: {}", email);
         
-        // Parse email to get username and domain
-        let parts: Vec<&str> = email.split('@').collect();
-        if parts.len() != 2 {
-            return Err("Invalid email format".into());
+        let response = self.client
+            .post("https://gmailnator.p.rapidapi.com/inbox")
+            .header("X-RapidAPI-Key", &self.api_key)
+            .header("X-RapidAPI-Host", "gmailnator.p.rapidapi.com")
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({ "email": email }))
+            .send()
+            .await?;
+
+        let status = response.status();
+        println!("Inbox API Response Status: {}", status);
+
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            return Err(format!("Inbox API Error ({}): {}", status, error_text).into());
         }
+
+        let inbox_response: GmailnatorInboxResponse = response.json().await?;
         
-        let username = parts[0];
-        let domain = parts[1];
-        
-        // Fetch messages from 1secmail API
-        let url = format!(
-            "https://www.1secmail.com/api/v1/?action=getMessages&login={}&domain={}",
-            username, domain
-        );
-        
-        let response = self.client.get(&url).send().await?;
-        let messages: Vec<SecMailMessage> = response.json().await?;
-        
-        println!("✓ Found {} messages", messages.len());
+        println!("✓ Found {} messages", inbox_response.message_data.len());
         
         // Convert to our format
-        let message_data: Vec<InboxMessage> = messages
+        let message_data: Vec<InboxMessage> = inbox_response.message_data
             .into_iter()
             .map(|msg| InboxMessage {
-                message_id: msg.id.to_string(),
+                message_id: msg.message_id,
                 from: msg.from,
                 subject: msg.subject,
-                time: msg.date,
+                time: msg.time,
             })
             .collect();
         
@@ -127,32 +134,27 @@ impl EmailnatorClient {
     pub async fn get_message(&self, email: &str, message_id: &str) -> Result<String, Box<dyn Error>> {
         println!("Fetching message {} for: {}", message_id, email);
         
-        // Parse email
-        let parts: Vec<&str> = email.split('@').collect();
-        if parts.len() != 2 {
-            return Err("Invalid email format".into());
+        let response = self.client
+            .post("https://gmailnator.p.rapidapi.com/message")
+            .header("X-RapidAPI-Key", &self.api_key)
+            .header("X-RapidAPI-Host", "gmailnator.p.rapidapi.com")
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "email": email,
+                "messageID": message_id
+            }))
+            .send()
+            .await?;
+
+        let status = response.status();
+        println!("Message API Response Status: {}", status);
+
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            return Err(format!("Message API Error ({}): {}", status, error_text).into());
         }
-        
-        let username = parts[0];
-        let domain = parts[1];
-        
-        // Fetch message content from 1secmail API
-        let url = format!(
-            "https://www.1secmail.com/api/v1/?action=readMessage&login={}&domain={}&id={}",
-            username, domain, message_id
-        );
-        
-        let response = self.client.get(&url).send().await?;
-        let message: serde_json::Value = response.json().await?;
-        
-        // Extract text or HTML body
-        let content = if let Some(html) = message.get("htmlBody").and_then(|v| v.as_str()) {
-            html.to_string()
-        } else if let Some(text) = message.get("textBody").and_then(|v| v.as_str()) {
-            format!("<html><body><pre>{}</pre></body></html>", text)
-        } else {
-            message.to_string()
-        };
+
+        let content = response.text().await?;
         
         println!("✓ Message content retrieved");
         
