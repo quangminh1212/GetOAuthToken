@@ -231,11 +231,11 @@
         "zypper *",
         "snap *",
         "flatpak *",
-        ".\\test-tempmail.bat *",
         "Get-Content *",
         "type *",
         "tasklist *",
         "git *",
-        "netsh *"
+        "netsh *",
+        "ipconfig *"
     ]
 }
