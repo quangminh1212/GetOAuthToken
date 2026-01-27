@@ -30,10 +30,12 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [error, setError] = useState(null);
   const [notification, setNotification] = useState(null);
-  const [showEmailnator, setShowEmailnator] = useState(false);
+  const [authMethod, setAuthMethod] = useState(null); // 'google' or 'gmail'
   const [tempEmail, setTempEmail] = useState(null);
   const [emailInbox, setEmailInbox] = useState([]);
   const [loadingEmail, setLoadingEmail] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [showCodeInput, setShowCodeInput] = useState(false);
   const [config, setConfig] = useState({
     client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
     client_secret: import.meta.env.VITE_GOOGLE_CLIENT_SECRET || '',
@@ -92,6 +94,11 @@ function App() {
 
   const handleLogout = () => {
     setTokenData(null);
+    setAuthMethod(null);
+    setTempEmail(null);
+    setEmailInbox([]);
+    setVerificationCode('');
+    setShowCodeInput(false);
   };
 
   const copyToClipboard = async (text) => {
@@ -143,6 +150,8 @@ function App() {
       // Extract verification code if present
       const codeMatch = content.match(/(\d{6,7})/);
       if (codeMatch) {
+        setVerificationCode(codeMatch[1]);
+        setShowCodeInput(true);
         showNotification(`Verification code: ${codeMatch[1]}`);
         await copyToClipboard(codeMatch[1]);
       } else {
@@ -153,6 +162,36 @@ function App() {
       console.error(error);
       showNotification('Failed to load message', 'error');
     }
+  };
+
+  const handleGmailLogin = async () => {
+    if (!tempEmail) {
+      showNotification('Please generate a temp email first', 'error');
+      return;
+    }
+    if (!verificationCode) {
+      showNotification('Please enter verification code', 'error');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // TODO: Implement Gmail OAuth with verification code
+      showNotification('Gmail OAuth with code - Coming soon!', 'error');
+    } catch (error) {
+      console.error(error);
+      showNotification('Failed to authenticate', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBackToMethods = () => {
+    setAuthMethod(null);
+    setTempEmail(null);
+    setEmailInbox([]);
+    setVerificationCode('');
+    setShowCodeInput(false);
   };
 
   return (
@@ -169,97 +208,6 @@ function App() {
       )}
 
       <div className="relative z-10 w-full max-w-md">
-        {/* Emailnator Modal */}
-        {showEmailnator && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
-            <div className="bg-[#1a1a1a]/90 border border-white/10 p-6 rounded-2xl w-full max-w-lg shadow-2xl max-h-[80vh] overflow-y-auto">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold font-sans text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">
-                  Temp Email - Emailnator
-                </h2>
-                <button 
-                  onClick={() => setShowEmailnator(false)}
-                  className="text-gray-400 hover:text-white"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {!tempEmail ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-400 mb-4">Generate a temporary email address</p>
-                  <button
-                    onClick={handleGenerateTempEmail}
-                    disabled={loadingEmail}
-                    className="px-6 py-3 bg-accent hover:bg-opacity-80 rounded-lg font-semibold shadow-lg transition-all"
-                  >
-                    {loadingEmail ? 'Generating...' : 'Generate Email'}
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="p-4 bg-black/40 rounded-lg border border-white/10">
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="text-xs text-gray-400 uppercase">Your Temp Email</label>
-                      <button 
-                        onClick={() => copyToClipboard(tempEmail)}
-                        className="text-accent hover:text-white"
-                      >
-                        <CopyIcon />
-                      </button>
-                    </div>
-                    <p className="text-sm font-mono text-white break-all">{tempEmail}</p>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleRefreshInbox}
-                      disabled={loadingEmail}
-                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-semibold transition-all"
-                    >
-                      {loadingEmail ? 'Loading...' : 'Refresh Inbox'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setTempEmail(null);
-                        setEmailInbox([]);
-                      }}
-                      className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-sm font-semibold transition-all"
-                    >
-                      New Email
-                    </button>
-                  </div>
-
-                  {emailInbox.length > 0 && (
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-semibold text-gray-300">Inbox ({emailInbox.length})</h3>
-                      {emailInbox.map((msg, idx) => (
-                        <div 
-                          key={idx}
-                          onClick={() => handleViewMessage(msg.message_id)}
-                          className="p-3 bg-black/40 rounded-lg border border-white/10 hover:border-accent cursor-pointer transition-all"
-                        >
-                          <div className="flex justify-between items-start mb-1">
-                            <p className="text-sm font-medium text-white">{msg.from}</p>
-                            <span className="text-xs text-gray-500">{msg.time}</span>
-                          </div>
-                          <p className="text-xs text-gray-400">{msg.subject}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {emailInbox.length === 0 && (
-                    <div className="text-center py-8 text-gray-500 text-sm">
-                      No messages yet. Click "Refresh Inbox" to check.
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Settings Modal */}
         {showSettings && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
@@ -328,57 +276,224 @@ function App() {
               </h1>
               <p className="text-sm text-gray-400 mt-1">Token Manager</p>
             </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => setShowEmailnator(true)} 
-                className="p-2 rounded-full hover:bg-white/5 transition-colors"
-                title="Temp Email"
-              >
-                <svg className="w-5 h-5 text-gray-400 hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-              </button>
-              <button onClick={() => setShowSettings(true)} className="p-2 rounded-full hover:bg-white/5 transition-colors">
-                <SettingsIcon />
-              </button>
-            </div>
+            <button onClick={() => setShowSettings(true)} className="p-2 rounded-full hover:bg-white/5 transition-colors">
+              <SettingsIcon />
+            </button>
           </div>
 
           {!tokenData ? (
-            <div className="text-center py-8">
-              <div className="mb-8 relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-accent to-blue-600 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-                <button
-                  onClick={handleLogin}
-                  disabled={loading}
-                  className="relative w-full bg-white text-gray-800 font-semibold py-4 px-6 rounded-xl flex items-center justify-center gap-3 hover:bg-gray-50 transition-all transform hover:-translate-y-1 shadow-lg"
-                >
-                  {loading ? (
-                    <span className="flex items-center">
-                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <>
+              {!authMethod ? (
+                /* Method Selection */
+                <div className="space-y-4">
+                  <h2 className="text-lg font-semibold text-center mb-6 text-gray-300">Choose Authentication Method</h2>
+                  
+                  {/* Method 1: Google Login */}
+                  <div className="relative group">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-accent to-blue-600 rounded-xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                    <button
+                      onClick={() => setAuthMethod('google')}
+                      className="relative w-full bg-white text-gray-800 font-semibold py-4 px-6 rounded-xl flex items-center justify-between hover:bg-gray-50 transition-all transform hover:-translate-y-1 shadow-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <GoogleIcon />
+                        <div className="text-left">
+                          <p className="font-bold">Google OAuth Login</p>
+                          <p className="text-xs text-gray-600">Standard OAuth 2.0 flow</p>
+                        </div>
+                      </div>
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
-                      Connecting...
-                    </span>
-                  ) : (
+                    </button>
+                  </div>
+
+                  {/* Method 2: Gmail with Code */}
+                  <div className="relative group">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                    <button
+                      onClick={() => setAuthMethod('gmail')}
+                      className="relative w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-4 px-6 rounded-xl flex items-center justify-between hover:opacity-90 transition-all transform hover:-translate-y-1 shadow-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <div className="text-left">
+                          <p className="font-bold">Gmail with Verification Code</p>
+                          <p className="text-xs text-purple-200">Use temp email + code</p>
+                        </div>
+                      </div>
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-gray-500 text-center mt-6">
+                    Both methods retrieve OAuth tokens securely
+                  </p>
+                </div>
+              ) : authMethod === 'google' ? (
+                /* Google OAuth Flow */
+                <div className="text-center py-8">
+                  <button
+                    onClick={handleBackToMethods}
+                    className="mb-6 text-sm text-gray-400 hover:text-white flex items-center gap-2 mx-auto"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back to methods
+                  </button>
+                  
+                  <div className="mb-8 relative group">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-accent to-blue-600 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                    <button
+                      onClick={handleLogin}
+                      disabled={loading}
+                      className="relative w-full bg-white text-gray-800 font-semibold py-4 px-6 rounded-xl flex items-center justify-center gap-3 hover:bg-gray-50 transition-all transform hover:-translate-y-1 shadow-lg"
+                    >
+                      {loading ? (
+                        <span className="flex items-center">
+                          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Connecting...
+                        </span>
+                      ) : (
+                        <>
+                          <GoogleIcon />
+                          <span>Continue with Google</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">Securely authenticate with your Google account</p>
+                </div>
+              ) : (
+                /* Gmail with Code Flow */
+                <div className="space-y-6">
+                  <button
+                    onClick={handleBackToMethods}
+                    className="text-sm text-gray-400 hover:text-white flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back to methods
+                  </button>
+
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-gray-300">Step 1: Generate Temp Email</h3>
+                    {!tempEmail ? (
+                      <button
+                        onClick={handleGenerateTempEmail}
+                        disabled={loadingEmail}
+                        className="w-full px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold shadow-lg transition-all"
+                      >
+                        {loadingEmail ? 'Generating...' : 'Generate Temp Email'}
+                      </button>
+                    ) : (
+                      <div className="p-4 bg-black/40 rounded-lg border border-white/10">
+                        <div className="flex justify-between items-center mb-2">
+                          <label className="text-xs text-gray-400 uppercase">Your Temp Email</label>
+                          <button 
+                            onClick={() => copyToClipboard(tempEmail)}
+                            className="text-accent hover:text-white"
+                          >
+                            <CopyIcon />
+                          </button>
+                        </div>
+                        <p className="text-sm font-mono text-white break-all">{tempEmail}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {tempEmail && (
                     <>
-                      <GoogleIcon />
-                      <span>Continue with Google</span>
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-gray-300">Step 2: Check Inbox</h3>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleRefreshInbox}
+                            disabled={loadingEmail}
+                            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-semibold transition-all"
+                          >
+                            {loadingEmail ? 'Loading...' : 'Refresh Inbox'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setTempEmail(null);
+                              setEmailInbox([]);
+                              setVerificationCode('');
+                              setShowCodeInput(false);
+                            }}
+                            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-sm font-semibold transition-all"
+                          >
+                            New Email
+                          </button>
+                        </div>
+
+                        {emailInbox.length > 0 && (
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {emailInbox.map((msg, idx) => (
+                              <div 
+                                key={idx}
+                                onClick={() => handleViewMessage(msg.message_id)}
+                                className="p-3 bg-black/40 rounded-lg border border-white/10 hover:border-accent cursor-pointer transition-all"
+                              >
+                                <div className="flex justify-between items-start mb-1">
+                                  <p className="text-sm font-medium text-white">{msg.from}</p>
+                                  <span className="text-xs text-gray-500">{msg.time}</span>
+                                </div>
+                                <p className="text-xs text-gray-400 truncate">{msg.subject}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {showCodeInput && (
+                        <div className="space-y-4">
+                          <h3 className="text-sm font-semibold text-gray-300">Step 3: Enter Verification Code</h3>
+                          <input
+                            type="text"
+                            value={verificationCode}
+                            onChange={(e) => setVerificationCode(e.target.value)}
+                            placeholder="Enter 6-7 digit code"
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-center text-lg font-mono focus:outline-none focus:border-accent"
+                            maxLength={7}
+                          />
+                          <button
+                            onClick={handleGmailLogin}
+                            disabled={loading || !verificationCode}
+                            className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90 rounded-lg font-semibold shadow-lg transition-all disabled:opacity-50"
+                          >
+                            {loading ? 'Authenticating...' : 'Get OAuth Token'}
+                          </button>
+                        </div>
+                      )}
                     </>
                   )}
-                </button>
-              </div>
-              <p className="text-xs text-gray-500">Securely authentiate with your Google account to retrieve access tokens.</p>
-            </div>
+
+                  <p className="text-xs text-gray-500 text-center">
+                    Use temp email to receive verification code from Gmail
+                  </p>
+                </div>
+              )}
+            </>
           ) : (
             <div className="space-y-6 animate-fade-in">
               <div className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/5">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-blue-500 flex items-center justify-center text-lg font-bold">
-                  G
+                  {authMethod === 'google' ? 'G' : 'M'}
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-white">Google Account</p>
+                  <p className="text-sm font-medium text-white">
+                    {authMethod === 'google' ? 'Google Account' : 'Gmail Account'}
+                  </p>
                   <p className="text-xs text-green-400">● Connected</p>
                 </div>
                 <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-white underline">
