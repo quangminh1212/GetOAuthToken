@@ -10,6 +10,11 @@ use std::io::Write;
 mod emailnator;
 use emailnator::{EmailnatorClient, EmailData, InboxData};
 
+// Global state for email client
+lazy_static::lazy_static! {
+    static ref EMAIL_CLIENT: Arc<Mutex<EmailnatorClient>> = Arc::new(Mutex::new(EmailnatorClient::new()));
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OAuthConfig {
     pub client_id: String,
@@ -295,7 +300,7 @@ async fn login_google(_app: AppHandle, config: OAuthConfig) -> Result<TokenData,
 async fn generate_temp_email() -> Result<EmailData, String> {
     log_to_file("========== GENERATING TEMP EMAIL ==========");
     
-    let mut client = EmailnatorClient::new();
+    let mut client = EMAIL_CLIENT.lock().await;
     let email_data = client.generate_email()
         .await
         .map_err(|e| {
@@ -315,7 +320,7 @@ async fn generate_temp_email() -> Result<EmailData, String> {
 async fn get_email_inbox(email: String) -> Result<InboxData, String> {
     log_to_file(&format!("========== FETCHING INBOX FOR: {} ==========", email));
     
-    let client = EmailnatorClient::new();
+    let client = EMAIL_CLIENT.lock().await;
     let inbox_data = client.get_inbox(&email)
         .await
         .map_err(|e| {
@@ -333,7 +338,7 @@ async fn get_email_inbox(email: String) -> Result<InboxData, String> {
 async fn get_email_message(email: String, message_id: String) -> Result<String, String> {
     log_to_file(&format!("========== FETCHING MESSAGE: {} ==========", message_id));
     
-    let client = EmailnatorClient::new();
+    let client = EMAIL_CLIENT.lock().await;
     let content = client.get_message(&email, &message_id)
         .await
         .map_err(|e| {
