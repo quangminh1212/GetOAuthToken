@@ -1,426 +1,202 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import './App.css';
+import { Check, Clipboard, Eye, EyeOff, Loader2, RefreshCcw, ShieldCheck } from 'lucide-react';
 
-const GoogleIcon = () => (
-  <svg className="w-5 h-5 mr-3" viewBox="0 0 48 48">
-    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-  </svg>
-);
-
-const SettingsIcon = () => (
-  <svg className="w-5 h-5 text-gray-400 hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-  </svg>
-);
-
-const CopyIcon = () => (
-  <svg className="w-4 h-4 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-  </svg>
-);
-
-const defaultConfig = {
-  auth_method: 'oauth',
-  client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
-  client_secret: import.meta.env.VITE_GOOGLE_CLIENT_SECRET || '',
-  auth_url: import.meta.env.VITE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth',
-  token_url: import.meta.env.VITE_TOKEN_URL || 'https://oauth2.googleapis.com/token',
-  redirect_uri: import.meta.env.VITE_REDIRECT_URI || 'http://localhost:3000/oauth/callback',
-  scope: import.meta.env.VITE_SCOPE || 'email profile openid',
-  kiro_auth_url: import.meta.env.VITE_KIRO_AUTH_URL || '',
+const initialForm = {
+  authUrl: '',
   username: '',
   password: '',
+  method: 'GET',
+  mode: 'basic',
 };
 
-const mergeConfig = (savedConfig) => ({
-  ...defaultConfig,
-  ...savedConfig,
-});
-
 function App() {
+  const [form, setForm] = useState(initialForm);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [tokenData, setTokenData] = useState(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [error, setError] = useState(null);
-  const [notification, setNotification] = useState(null);
-  const [config, setConfig] = useState(defaultConfig);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState('');
 
-  useEffect(() => {
-    const savedConfig = localStorage.getItem('oauth_config');
-    if (savedConfig) {
-      try {
-        setConfig(mergeConfig(JSON.parse(savedConfig)));
-      } catch {
-        setConfig(defaultConfig);
-      }
-    }
-  }, []);
+  const canSubmit = useMemo(() => (
+    form.authUrl.trim() && form.username.trim() && form.password
+  ), [form]);
 
-  const providerLabel = useMemo(() => {
-    if (config.auth_method === 'kiro') {
-      return 'Kiro Login';
-    }
-
-    return 'OAuth Login';
-  }, [config.auth_method]);
-
-  const showNotification = (message, type = 'success') => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), 3000);
+  const updateField = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
   };
 
-  const updateConfig = (key, value) => {
-    setConfig((current) => ({ ...current, [key]: value }));
+  const copyText = async (label, value) => {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setCopied(label);
+    window.setTimeout(() => setCopied(''), 1800);
   };
 
-  const validateConfig = () => {
-    if (config.auth_method === 'oauth') {
-      if (!config.auth_url) {
-        return 'OAuth auth URL la bat buoc';
-      }
+  const login = async (event) => {
+    event.preventDefault();
+    setError('');
+    setTokenData(null);
 
-      if (!config.client_id || !config.client_secret || !config.token_url || !config.redirect_uri) {
-        return 'OAuth can du Client ID, Client Secret, Token URL va Redirect URI';
-      }
-      return null;
-    }
-
-    if (!config.kiro_auth_url) {
-      return 'Kiro auth URL la bat buoc';
-    }
-
-    if (!config.username || !config.password) {
-      return 'Kiro can username va password';
-    }
-
-    return null;
-  };
-
-  const handleLogin = async () => {
-    const validationError = validateConfig();
-    if (validationError) {
-      setError(validationError);
-      setShowSettings(true);
+    if (!canSubmit) {
+      setError('Vui long nhap du login URL, tai khoan va mat khau.');
       return;
     }
 
     setLoading(true);
-    setError(null);
-
     try {
-      const result = config.auth_method === 'kiro'
-        ? await invoke('login_kiro', {
-            config: {
-              auth_url: config.kiro_auth_url,
-              username: config.username,
-              password: config.password,
-            },
-          })
-        : await invoke('login_google', {
-            config: {
-              client_id: config.client_id,
-              client_secret: config.client_secret,
-              auth_url: config.auth_url,
-              token_url: config.token_url,
-              redirect_uri: config.redirect_uri,
-              scope: config.scope,
-            },
-          });
-
+      const result = await invoke('login_kiro', {
+        config: {
+          auth_url: form.authUrl.trim(),
+          username: form.username.trim(),
+          password: form.password,
+          method: form.method,
+          credential_mode: form.mode,
+        },
+      });
       setTokenData(result);
-      showNotification('Dang nhap thanh cong, da lay token.');
-    } catch (invokeError) {
-      console.error(invokeError);
-      const errorMessage = typeof invokeError === 'string'
-        ? invokeError
-        : invokeError?.message || 'Dang nhap that bai';
-      setError(errorMessage);
-      showNotification(errorMessage, 'error');
+    } catch (err) {
+      setError(typeof err === 'string' ? err : err?.message || 'Dang nhap Kiro that bai.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSaveConfig = () => {
-    const validationError = validateConfig();
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
-    localStorage.setItem('oauth_config', JSON.stringify(config));
-    setShowSettings(false);
-    setError(null);
-    showNotification('Da luu cau hinh.');
-  };
-
-  const handleLogout = () => {
-    setTokenData(null);
-  };
-
-  const copyToClipboard = async (text) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      showNotification('Da copy vao clipboard.');
-    } catch {
-      showNotification('Copy that bai.', 'error');
-    }
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center text-white relative">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
-
-      {notification && (
-        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg animate-fade-in ${
-          notification.type === 'error' ? 'bg-red-500/90' : 'bg-green-500/90'
-        } text-white font-medium`}>
-          {notification.message}
+    <main className="app-shell">
+      <section className="tool-panel">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">XLab Kiro</p>
+            <h1>Refresh Token</h1>
+          </div>
+          <div className="status-pill">
+            <ShieldCheck size={16} />
+            <span>No secret logs</span>
+          </div>
         </div>
-      )}
 
-      <div className="relative z-10 w-full max-w-md">
-        {showSettings && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
-            <div className="bg-[#1a1a1a]/90 border border-white/10 p-6 rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
-              <h2 className="text-xl font-bold mb-4 font-sans text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">Settings</h2>
-              {error && (
-                <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-sm">
-                  {error}
-                </div>
-              )}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Auth Method</label>
-                  <select
-                    value={config.auth_method}
-                    onChange={(e) => updateConfig('auth_method', e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                  >
-                    <option value="oauth">OAuth Browser Flow</option>
-                    <option value="kiro">Kiro Username/Password</option>
-                  </select>
-                </div>
+        <form onSubmit={login} className="login-form">
+          <label>
+            <span>Kiro login URL</span>
+            <input
+              value={form.authUrl}
+              onChange={(event) => updateField('authUrl', event.target.value)}
+              placeholder="https://.../login"
+              autoComplete="url"
+            />
+          </label>
 
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">
-                    {config.auth_method === 'kiro' ? 'Kiro Login URL' : 'Auth URL'}
-                  </label>
-                  <input
-                    type="text"
-                    value={config.auth_method === 'kiro' ? config.kiro_auth_url : config.auth_url}
-                    onChange={(e) => updateConfig(config.auth_method === 'kiro' ? 'kiro_auth_url' : 'auth_url', e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                    placeholder={config.auth_method === 'kiro' ? 'Kiro login endpoint' : 'Authorization endpoint'}
-                  />
-                </div>
+          <div className="grid">
+            <label>
+              <span>Request</span>
+              <select value={form.method} onChange={(event) => updateField('method', event.target.value)}>
+                <option value="GET">GET Basic</option>
+                <option value="POST">POST</option>
+              </select>
+            </label>
+            <label>
+              <span>Credential mode</span>
+              <select value={form.mode} onChange={(event) => updateField('mode', event.target.value)}>
+                <option value="basic">Authorization Basic</option>
+                <option value="json">JSON body</option>
+              </select>
+            </label>
+          </div>
 
-                {config.auth_method === 'oauth' ? (
-                  <>
-                    <div>
-                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Client ID</label>
-                      <input
-                        type="text"
-                        value={config.client_id}
-                        onChange={(e) => updateConfig('client_id', e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                        placeholder="Enter Client ID"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Client Secret</label>
-                      <input
-                        type="password"
-                        value={config.client_secret}
-                        onChange={(e) => updateConfig('client_secret', e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                        placeholder="Enter Client Secret"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Token URL</label>
-                      <input
-                        type="text"
-                        value={config.token_url}
-                        onChange={(e) => updateConfig('token_url', e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Redirect URI</label>
-                      <input
-                        type="text"
-                        value={config.redirect_uri}
-                        onChange={(e) => updateConfig('redirect_uri', e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Scope</label>
-                      <input
-                        type="text"
-                        value={config.scope}
-                        onChange={(e) => updateConfig('scope', e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Kiro Username</label>
-                      <input
-                        type="text"
-                        value={config.username}
-                        onChange={(e) => updateConfig('username', e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                        placeholder="Enter username"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Kiro Password</label>
-                      <input
-                        type="password"
-                        value={config.password}
-                        onChange={(e) => updateConfig('password', e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                        placeholder="Enter password"
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  onClick={() => setShowSettings(false)}
-                  className="px-4 py-2 text-sm text-gray-400 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveConfig}
-                  className="px-4 py-2 bg-accent hover:bg-opacity-80 rounded-lg text-sm font-semibold shadow-lg shadow-accent/20 transition-all"
-                >
-                  Save Configuration
-                </button>
-              </div>
+          <label>
+            <span>Tai khoan</span>
+            <input
+              value={form.username}
+              onChange={(event) => updateField('username', event.target.value)}
+              placeholder="username hoặc email"
+              autoComplete="username"
+            />
+          </label>
+
+          <label>
+            <span>Mat khau</span>
+            <div className="password-field">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={(event) => updateField('password', event.target.value)}
+                placeholder="password"
+                autoComplete="current-password"
+              />
+              <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label="Toggle password visibility">
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </label>
+
+          {error && <div className="error-box">{error}</div>}
+
+          <button className="primary-action" type="submit" disabled={loading || !canSubmit}>
+            {loading ? <Loader2 className="spin" size={18} /> : <RefreshCcw size={18} />}
+            <span>{loading ? 'Dang lay token...' : 'Lay refresh token'}</span>
+          </button>
+        </form>
+      </section>
+
+      <section className="result-panel">
+        <div className="result-header">
+          <h2>Ket qua</h2>
+          {tokenData?.saved_path && <span>Saved</span>}
+        </div>
+
+        {!tokenData ? (
+          <div className="empty-state">
+            Nhap thong tin Kiro va chay login de lay refresh token.
+          </div>
+        ) : (
+          <div className="token-list">
+            <TokenField
+              label="Refresh Token"
+              value={tokenData.refresh_token}
+              copied={copied}
+              onCopy={copyText}
+            />
+            <TokenField
+              label="Access Token"
+              value={tokenData.access_token}
+              copied={copied}
+              onCopy={copyText}
+            />
+            <div className="meta-grid">
+              <Meta label="Token Type" value={tokenData.token_type} />
+              <Meta label="Expires In" value={tokenData.expires_in ? `${tokenData.expires_in}s` : ''} />
+              <Meta label="Scope" value={tokenData.scope} />
+              <Meta label="Saved Path" value={tokenData.saved_path} />
             </div>
           </div>
         )}
+      </section>
+    </main>
+  );
+}
 
-        <div className="bg-glass-bg border border-glass-border rounded-3xl p-8 shadow-2xl backdrop-blur-xl">
-          <div className="flex justify-between items-start mb-8">
-            <div>
-              <h1 className="text-3xl font-bold font-sans bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
-                GetOAuth.
-              </h1>
-              <p className="text-sm text-gray-400 mt-1">Token Manager</p>
-            </div>
-            <button onClick={() => setShowSettings(true)} className="p-2 rounded-full hover:bg-white/5 transition-colors">
-              <SettingsIcon />
-            </button>
-          </div>
-
-          {!tokenData ? (
-            <div className="text-center py-8">
-              <div className="mb-8 relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-accent to-blue-600 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-                <button
-                  onClick={handleLogin}
-                  disabled={loading}
-                  className="relative w-full bg-white text-gray-800 font-semibold py-4 px-6 rounded-xl flex items-center justify-center gap-3 hover:bg-gray-50 transition-all transform hover:-translate-y-1 shadow-lg"
-                >
-                  {loading ? (
-                    <span className="flex items-center">
-                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Connecting...
-                    </span>
-                  ) : (
-                    <>
-                      <GoogleIcon />
-                      <span>{config.auth_method === 'kiro' ? 'Login with Kiro' : 'Continue with OAuth'}</span>
-                    </>
-                  )}
-                </button>
-              </div>
-              <p className="text-xs text-gray-500">
-                {config.auth_method === 'kiro'
-                  ? 'Kiro module gui Authorization: Basic toi endpoint rieng va doc refresh token tu JSON response.'
-                  : 'Mo browser OAuth flow, sau do doi authorization code lay access/refresh token.'}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-6 animate-fade-in">
-              <div className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/5">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-blue-500 flex items-center justify-center text-lg font-bold">
-                  {config.auth_method === 'kiro' ? 'K' : 'O'}
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-white">{providerLabel}</p>
-                  <p className="text-xs text-green-400">? Connected</p>
-                </div>
-                <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-white underline">
-                  Logout
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-xs text-gray-400 uppercase tracking-wider">Access Token</label>
-                    <button onClick={() => copyToClipboard(tokenData.access_token)} className="text-accent hover:text-white transition-colors">
-                      <CopyIcon />
-                    </button>
-                  </div>
-                  <div className="p-3 bg-black/40 rounded-lg border border-white/10 font-mono text-xs text-gray-300 break-all max-h-24 overflow-y-auto custom-scrollbar">
-                    {tokenData.access_token || '(empty)'}
-                  </div>
-                </div>
-
-                {tokenData.refresh_token && (
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="text-xs text-gray-400 uppercase tracking-wider">Refresh Token</label>
-                      <button onClick={() => copyToClipboard(tokenData.refresh_token)} className="text-accent hover:text-white transition-colors">
-                        <CopyIcon />
-                      </button>
-                    </div>
-                    <div className="p-3 bg-black/40 rounded-lg border border-white/10 font-mono text-xs text-gray-300 break-all">
-                      {tokenData.refresh_token}
-                    </div>
-                  </div>
-                )}
-
-                <div className="text-center pt-2">
-                  <button
-                    onClick={() => copyToClipboard(JSON.stringify(tokenData, null, 2))}
-                    className="text-xs text-gray-500 hover:text-accent transition-colors"
-                  >
-                    Copy Full JSON Response
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-8 text-center">
-          <p className="text-xs text-gray-500">Inspired by xlab.id.vn</p>
-        </div>
+function TokenField({ label, value, copied, onCopy }) {
+  return (
+    <div className="token-field">
+      <div className="token-title">
+        <span>{label}</span>
+        <button type="button" onClick={() => onCopy(label, value)} disabled={!value}>
+          {copied === label ? <Check size={16} /> : <Clipboard size={16} />}
+        </button>
       </div>
+      <pre>{value || '(empty)'}</pre>
+    </div>
+  );
+}
+
+function Meta({ label, value }) {
+  return (
+    <div className="meta-item">
+      <span>{label}</span>
+      <strong>{value || '-'}</strong>
     </div>
   );
 }
 
 export default App;
-
-
-
