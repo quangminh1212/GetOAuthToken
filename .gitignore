@@ -6,6 +6,8 @@ src-tauri/gen/
 tokens.json
 log/
 *.log
+vite-dev*.log
+run-test*.log
 .env
 client/.env
 client/.env.local

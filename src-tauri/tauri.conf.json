@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "identifier": "vn.xlab.refresh-token",
   "build": {
-    "beforeDevCommand": "npm --prefix ../client run dev",
-    "beforeBuildCommand": "npm --prefix ../client run build",
+    "beforeDevCommand": "npm --prefix client run dev",
+    "beforeBuildCommand": "npm --prefix client run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../client/dist"
   },
