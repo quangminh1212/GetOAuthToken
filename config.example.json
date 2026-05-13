@@ -6,6 +6,7 @@
   "token_url": "https://oauth2.googleapis.com/token",
   "redirect_uri": "http://localhost:3000/oauth/callback",
   "scope": "email profile openid",
+  "kiro_auth_url": "",
   "username": "",
   "password": ""
 }

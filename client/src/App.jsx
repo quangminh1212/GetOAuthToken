@@ -32,6 +32,7 @@ const defaultConfig = {
   token_url: import.meta.env.VITE_TOKEN_URL || 'https://oauth2.googleapis.com/token',
   redirect_uri: import.meta.env.VITE_REDIRECT_URI || 'http://localhost:3000/oauth/callback',
   scope: import.meta.env.VITE_SCOPE || 'email profile openid',
+  kiro_auth_url: import.meta.env.VITE_KIRO_AUTH_URL || '',
   username: '',
   password: '',
 };
@@ -60,10 +61,13 @@ function App() {
     }
   }, []);
 
-  const providerLabel = useMemo(
-    () => (config.auth_method === 'basic' ? 'Basic Login' : 'OAuth Login'),
-    [config.auth_method]
-  );
+  const providerLabel = useMemo(() => {
+    if (config.auth_method === 'kiro') {
+      return 'Kiro Login';
+    }
+
+    return 'OAuth Login';
+  }, [config.auth_method]);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
@@ -75,19 +79,23 @@ function App() {
   };
 
   const validateConfig = () => {
-    if (!config.auth_url) {
-      return 'Auth URL la bat buoc';
-    }
-
     if (config.auth_method === 'oauth') {
+      if (!config.auth_url) {
+        return 'OAuth auth URL la bat buoc';
+      }
+
       if (!config.client_id || !config.client_secret || !config.token_url || !config.redirect_uri) {
         return 'OAuth can du Client ID, Client Secret, Token URL va Redirect URI';
       }
       return null;
     }
 
+    if (!config.kiro_auth_url) {
+      return 'Kiro auth URL la bat buoc';
+    }
+
     if (!config.username || !config.password) {
-      return 'Basic login can username va password';
+      return 'Kiro can username va password';
     }
 
     return null;
@@ -105,10 +113,10 @@ function App() {
     setError(null);
 
     try {
-      const result = config.auth_method === 'basic'
-        ? await invoke('login_with_password', {
+      const result = config.auth_method === 'kiro'
+        ? await invoke('login_kiro', {
             config: {
-              auth_url: config.auth_url,
+              auth_url: config.kiro_auth_url,
               username: config.username,
               password: config.password,
             },
@@ -160,7 +168,7 @@ function App() {
       await navigator.clipboard.writeText(text);
       showNotification('Da copy vao clipboard.');
     } catch {
-      showNotification('Copy th?t b?i.', 'error');
+      showNotification('Copy that bai.', 'error');
     }
   };
 
@@ -195,18 +203,20 @@ function App() {
                     className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
                   >
                     <option value="oauth">OAuth Browser Flow</option>
-                    <option value="basic">Basic Header Login</option>
+                    <option value="kiro">Kiro Username/Password</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Auth URL</label>
+                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">
+                    {config.auth_method === 'kiro' ? 'Kiro Login URL' : 'Auth URL'}
+                  </label>
                   <input
                     type="text"
-                    value={config.auth_url}
-                    onChange={(e) => updateConfig('auth_url', e.target.value)}
+                    value={config.auth_method === 'kiro' ? config.kiro_auth_url : config.auth_url}
+                    onChange={(e) => updateConfig(config.auth_method === 'kiro' ? 'kiro_auth_url' : 'auth_url', e.target.value)}
                     className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                    placeholder={config.auth_method === 'basic' ? 'https://host/login' : 'Authorization endpoint'}
+                    placeholder={config.auth_method === 'kiro' ? 'Kiro login endpoint' : 'Authorization endpoint'}
                   />
                 </div>
 
@@ -263,7 +273,7 @@ function App() {
                 ) : (
                   <>
                     <div>
-                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Username</label>
+                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Kiro Username</label>
                       <input
                         type="text"
                         value={config.username}
@@ -273,7 +283,7 @@ function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Password</label>
+                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Kiro Password</label>
                       <input
                         type="password"
                         value={config.password}
@@ -336,14 +346,14 @@ function App() {
                   ) : (
                     <>
                       <GoogleIcon />
-                      <span>{config.auth_method === 'basic' ? 'Login with Username/Password' : 'Continue with OAuth'}</span>
+                      <span>{config.auth_method === 'kiro' ? 'Login with Kiro' : 'Continue with OAuth'}</span>
                     </>
                   )}
                 </button>
               </div>
               <p className="text-xs text-gray-500">
-                {config.auth_method === 'basic'
-                  ? 'Gui Authorization: Basic toi endpoint da cau hinh va thu doc access/refresh token tu JSON response.'
+                {config.auth_method === 'kiro'
+                  ? 'Kiro module gui Authorization: Basic toi endpoint rieng va doc refresh token tu JSON response.'
                   : 'Mo browser OAuth flow, sau do doi authorization code lay access/refresh token.'}
               </p>
             </div>
@@ -351,7 +361,7 @@ function App() {
             <div className="space-y-6 animate-fade-in">
               <div className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/5">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-blue-500 flex items-center justify-center text-lg font-bold">
-                  {config.auth_method === 'basic' ? 'B' : 'O'}
+                  {config.auth_method === 'kiro' ? 'K' : 'O'}
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-white">{providerLabel}</p>
@@ -411,5 +421,6 @@ function App() {
 }
 
 export default App;
+
 
 

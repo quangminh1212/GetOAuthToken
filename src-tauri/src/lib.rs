@@ -1,3 +1,5 @@
+mod kiro_auth;
+
 use tauri::AppHandle;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -9,6 +11,8 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+
+pub use kiro_auth::login_kiro;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OAuthConfig {
@@ -39,7 +43,7 @@ pub struct TokenData {
 }
 
 // Logging utility
-fn log_to_file(message: &str) {
+pub(crate) fn log_to_file(message: &str) {
     let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
     let log_message = format!("[{}] {}\n", timestamp, message);
     
@@ -109,7 +113,7 @@ fn select_token_payload<'a>(root: &'a Value) -> &'a Value {
     root
 }
 
-fn parse_token_response(response_text: &str) -> Result<TokenData, String> {
+pub(crate) fn parse_token_response(response_text: &str) -> Result<TokenData, String> {
     let value: Value = serde_json::from_str(response_text)
         .map_err(|e| format!("Failed to parse token response JSON: {}", e))?;
 
@@ -135,7 +139,7 @@ fn parse_token_response(response_text: &str) -> Result<TokenData, String> {
     })
 }
 
-fn log_token_summary(token_data: &TokenData) {
+pub(crate) fn log_token_summary(token_data: &TokenData) {
     log_to_file("Token data parsed successfully");
     log_to_file(&format!(
         "  - access_token: present (length: {})",
@@ -162,7 +166,7 @@ fn log_token_summary(token_data: &TokenData) {
     }
 }
 
-fn save_token_data(token_data: &TokenData) -> Result<(), String> {
+pub(crate) fn save_token_data(token_data: &TokenData) -> Result<(), String> {
     let json = serde_json::to_string_pretty(token_data)
         .map_err(|e| {
             log_to_file(&format!("ERROR: Failed to serialize token data: {}", e));
@@ -425,7 +429,7 @@ pub fn run() {
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
-    .invoke_handler(tauri::generate_handler![login_google, login_with_password])
+    .invoke_handler(tauri::generate_handler![login_google, login_with_password, login_kiro])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }
