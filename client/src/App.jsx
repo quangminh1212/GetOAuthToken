@@ -2,7 +2,18 @@ import { useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Check, Clipboard, Eye, EyeOff, Loader2, RefreshCcw, ShieldCheck } from 'lucide-react';
 
+const tokenProviders = [
+  {
+    id: 'kiro',
+    name: 'Kiro',
+    command: 'login_kiro',
+    endpointLabel: 'Kiro login URL',
+    emptyText: 'Nhap thong tin Kiro va chay login de lay refresh token.',
+  },
+];
+
 const initialForm = {
+  provider: 'kiro',
   authUrl: '',
   username: '',
   password: '',
@@ -17,6 +28,11 @@ function App() {
   const [tokenData, setTokenData] = useState(null);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
+
+  const provider = useMemo(
+    () => tokenProviders.find((item) => item.id === form.provider) || tokenProviders[0],
+    [form.provider],
+  );
 
   const canSubmit = useMemo(() => (
     form.authUrl.trim() && form.username.trim() && form.password
@@ -45,7 +61,7 @@ function App() {
 
     setLoading(true);
     try {
-      const result = await invoke('login_kiro', {
+      const result = await invoke(provider.command, {
         config: {
           auth_url: form.authUrl.trim(),
           username: form.username.trim(),
@@ -67,7 +83,7 @@ function App() {
       <section className="tool-panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">XLab Kiro</p>
+            <p className="eyebrow">XLab Token Providers</p>
             <h1>Refresh Token</h1>
           </div>
           <div className="status-pill">
@@ -78,7 +94,16 @@ function App() {
 
         <form onSubmit={login} className="login-form">
           <label>
-            <span>Kiro login URL</span>
+            <span>Provider</span>
+            <select value={form.provider} onChange={(event) => updateField('provider', event.target.value)}>
+              {tokenProviders.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span>{provider.endpointLabel}</span>
             <input
               value={form.authUrl}
               onChange={(event) => updateField('authUrl', event.target.value)}
@@ -145,9 +170,9 @@ function App() {
           {tokenData?.saved_path && <span>Saved</span>}
         </div>
 
-        {!tokenData ? (
+          {!tokenData ? (
           <div className="empty-state">
-            Nhap thong tin Kiro va chay login de lay refresh token.
+            {provider.emptyText}
           </div>
         ) : (
           <div className="token-list">
