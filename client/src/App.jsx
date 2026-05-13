@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import './App.css';
 
@@ -24,66 +24,131 @@ const CopyIcon = () => (
   </svg>
 );
 
+const defaultConfig = {
+  auth_method: 'oauth',
+  client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
+  client_secret: import.meta.env.VITE_GOOGLE_CLIENT_SECRET || '',
+  auth_url: import.meta.env.VITE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth',
+  token_url: import.meta.env.VITE_TOKEN_URL || 'https://oauth2.googleapis.com/token',
+  redirect_uri: import.meta.env.VITE_REDIRECT_URI || 'http://localhost:3000/oauth/callback',
+  scope: import.meta.env.VITE_SCOPE || 'email profile openid',
+  username: '',
+  password: '',
+};
+
+const mergeConfig = (savedConfig) => ({
+  ...defaultConfig,
+  ...savedConfig,
+});
+
 function App() {
   const [loading, setLoading] = useState(false);
   const [tokenData, setTokenData] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [error, setError] = useState(null);
   const [notification, setNotification] = useState(null);
-  const [config, setConfig] = useState({
-    client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
-    client_secret: import.meta.env.VITE_GOOGLE_CLIENT_SECRET || '',
-    auth_url: import.meta.env.VITE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth',
-    token_url: import.meta.env.VITE_TOKEN_URL || 'https://oauth2.googleapis.com/token',
-    redirect_uri: import.meta.env.VITE_REDIRECT_URI || 'http://localhost:3000/oauth/callback',
-    scope: import.meta.env.VITE_SCOPE || 'email profile openid'
-  });
+  const [config, setConfig] = useState(defaultConfig);
 
   useEffect(() => {
-    // Try to load config from localStorage (overrides .env if exists)
     const savedConfig = localStorage.getItem('oauth_config');
     if (savedConfig) {
-      setConfig(JSON.parse(savedConfig));
+      try {
+        setConfig(mergeConfig(JSON.parse(savedConfig)));
+      } catch {
+        setConfig(defaultConfig);
+      }
     }
   }, []);
+
+  const providerLabel = useMemo(
+    () => (config.auth_method === 'basic' ? 'Basic Login' : 'OAuth Login'),
+    [config.auth_method]
+  );
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3000);
   };
 
+  const updateConfig = (key, value) => {
+    setConfig((current) => ({ ...current, [key]: value }));
+  };
+
+  const validateConfig = () => {
+    if (!config.auth_url) {
+      return 'Auth URL la bat buoc';
+    }
+
+    if (config.auth_method === 'oauth') {
+      if (!config.client_id || !config.client_secret || !config.token_url || !config.redirect_uri) {
+        return 'OAuth can du Client ID, Client Secret, Token URL va Redirect URI';
+      }
+      return null;
+    }
+
+    if (!config.username || !config.password) {
+      return 'Basic login can username va password';
+    }
+
+    return null;
+  };
+
   const handleLogin = async () => {
-    if (!config.client_id || !config.client_secret) {
-      setError('Please configure Client ID and Client Secret first');
+    const validationError = validateConfig();
+    if (validationError) {
+      setError(validationError);
       setShowSettings(true);
       return;
     }
 
     setLoading(true);
     setError(null);
+
     try {
-      const result = await invoke('login_google', { config });
+      const result = config.auth_method === 'basic'
+        ? await invoke('login_with_password', {
+            config: {
+              auth_url: config.auth_url,
+              username: config.username,
+              password: config.password,
+            },
+          })
+        : await invoke('login_google', {
+            config: {
+              client_id: config.client_id,
+              client_secret: config.client_secret,
+              auth_url: config.auth_url,
+              token_url: config.token_url,
+              redirect_uri: config.redirect_uri,
+              scope: config.scope,
+            },
+          });
+
       setTokenData(result);
-      showNotification('Login successful! Tokens retrieved.');
-    } catch (error) {
-      console.error(error);
-      const errorMsg = typeof error === 'string' ? error : error.message || 'Login failed';
-      setError(errorMsg);
-      showNotification(errorMsg, 'error');
+      showNotification('Dang nhap thanh cong, da lay token.');
+    } catch (invokeError) {
+      console.error(invokeError);
+      const errorMessage = typeof invokeError === 'string'
+        ? invokeError
+        : invokeError?.message || 'Dang nhap that bai';
+      setError(errorMessage);
+      showNotification(errorMessage, 'error');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSaveConfig = () => {
-    if (!config.client_id || !config.client_secret) {
-      setError('Client ID and Client Secret are required');
+    const validationError = validateConfig();
+    if (validationError) {
+      setError(validationError);
       return;
     }
+
     localStorage.setItem('oauth_config', JSON.stringify(config));
     setShowSettings(false);
     setError(null);
-    showNotification('Configuration saved successfully');
+    showNotification('Da luu cau hinh.');
   };
 
   const handleLogout = () => {
@@ -93,9 +158,9 @@ function App() {
   const copyToClipboard = async (text) => {
     try {
       await navigator.clipboard.writeText(text);
-      showNotification('Copied to clipboard!');
-    } catch (err) {
-      showNotification('Failed to copy', 'error');
+      showNotification('Da copy vao clipboard.');
+    } catch {
+      showNotification('Copy th?t b?i.', 'error');
     }
   };
 
@@ -103,7 +168,6 @@ function App() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center text-white relative">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
 
-      {/* Notification Toast */}
       {notification && (
         <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg animate-fade-in ${
           notification.type === 'error' ? 'bg-red-500/90' : 'bg-green-500/90'
@@ -113,10 +177,9 @@ function App() {
       )}
 
       <div className="relative z-10 w-full max-w-md">
-        {/* Settings Modal */}
         {showSettings && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
-            <div className="bg-[#1a1a1a]/90 border border-white/10 p-6 rounded-2xl w-full max-w-sm shadow-2xl">
+            <div className="bg-[#1a1a1a]/90 border border-white/10 p-6 rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
               <h2 className="text-xl font-bold mb-4 font-sans text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">Settings</h2>
               {error && (
                 <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-sm">
@@ -125,34 +188,102 @@ function App() {
               )}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Client ID</label>
+                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Auth Method</label>
+                  <select
+                    value={config.auth_method}
+                    onChange={(e) => updateConfig('auth_method', e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                  >
+                    <option value="oauth">OAuth Browser Flow</option>
+                    <option value="basic">Basic Header Login</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Auth URL</label>
                   <input
                     type="text"
-                    value={config.client_id}
-                    onChange={(e) => setConfig({ ...config, client_id: e.target.value })}
+                    value={config.auth_url}
+                    onChange={(e) => updateConfig('auth_url', e.target.value)}
                     className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                    placeholder="Enter Client ID"
+                    placeholder={config.auth_method === 'basic' ? 'https://host/login' : 'Authorization endpoint'}
                   />
                 </div>
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Client Secret</label>
-                  <input
-                    type="password"
-                    value={config.client_secret}
-                    onChange={(e) => setConfig({ ...config, client_secret: e.target.value })}
-                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                    placeholder="Enter Client Secret"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Redirect URI</label>
-                  <input
-                    type="text"
-                    value={config.redirect_uri}
-                    onChange={(e) => setConfig({ ...config, redirect_uri: e.target.value })}
-                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                  />
-                </div>
+
+                {config.auth_method === 'oauth' ? (
+                  <>
+                    <div>
+                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Client ID</label>
+                      <input
+                        type="text"
+                        value={config.client_id}
+                        onChange={(e) => updateConfig('client_id', e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                        placeholder="Enter Client ID"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Client Secret</label>
+                      <input
+                        type="password"
+                        value={config.client_secret}
+                        onChange={(e) => updateConfig('client_secret', e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                        placeholder="Enter Client Secret"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Token URL</label>
+                      <input
+                        type="text"
+                        value={config.token_url}
+                        onChange={(e) => updateConfig('token_url', e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Redirect URI</label>
+                      <input
+                        type="text"
+                        value={config.redirect_uri}
+                        onChange={(e) => updateConfig('redirect_uri', e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Scope</label>
+                      <input
+                        type="text"
+                        value={config.scope}
+                        onChange={(e) => updateConfig('scope', e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Username</label>
+                      <input
+                        type="text"
+                        value={config.username}
+                        onChange={(e) => updateConfig('username', e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                        placeholder="Enter username"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Password</label>
+                      <input
+                        type="password"
+                        value={config.password}
+                        onChange={(e) => updateConfig('password', e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                        placeholder="Enter password"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               <div className="mt-6 flex justify-end gap-3">
                 <button
@@ -172,7 +303,6 @@ function App() {
           </div>
         )}
 
-        {/* Main Card */}
         <div className="bg-glass-bg border border-glass-border rounded-3xl p-8 shadow-2xl backdrop-blur-xl">
           <div className="flex justify-between items-start mb-8">
             <div>
@@ -206,22 +336,26 @@ function App() {
                   ) : (
                     <>
                       <GoogleIcon />
-                      <span>Continue with Google</span>
+                      <span>{config.auth_method === 'basic' ? 'Login with Username/Password' : 'Continue with OAuth'}</span>
                     </>
                   )}
                 </button>
               </div>
-              <p className="text-xs text-gray-500">Securely authentiate with your Google account to retrieve access tokens.</p>
+              <p className="text-xs text-gray-500">
+                {config.auth_method === 'basic'
+                  ? 'Gui Authorization: Basic toi endpoint da cau hinh va thu doc access/refresh token tu JSON response.'
+                  : 'Mo browser OAuth flow, sau do doi authorization code lay access/refresh token.'}
+              </p>
             </div>
           ) : (
             <div className="space-y-6 animate-fade-in">
               <div className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/5">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-blue-500 flex items-center justify-center text-lg font-bold">
-                  G
+                  {config.auth_method === 'basic' ? 'B' : 'O'}
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-white">Google Account</p>
-                  <p className="text-xs text-green-400">● Connected</p>
+                  <p className="text-sm font-medium text-white">{providerLabel}</p>
+                  <p className="text-xs text-green-400">? Connected</p>
                 </div>
                 <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-white underline">
                   Logout
@@ -237,7 +371,7 @@ function App() {
                     </button>
                   </div>
                   <div className="p-3 bg-black/40 rounded-lg border border-white/10 font-mono text-xs text-gray-300 break-all max-h-24 overflow-y-auto custom-scrollbar">
-                    {tokenData.access_token}
+                    {tokenData.access_token || '(empty)'}
                   </div>
                 </div>
 
@@ -273,7 +407,9 @@ function App() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
+
+

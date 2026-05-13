@@ -1,11 +1,14 @@
 use tauri::AppHandle;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use warp::Filter;
 use std::fs::OpenOptions;
 use std::io::Write;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OAuthConfig {
@@ -15,6 +18,13 @@ pub struct OAuthConfig {
     pub token_url: String,
     pub redirect_uri: String,
     pub scope: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct BasicLoginConfig {
+    pub auth_url: String,
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -52,6 +62,129 @@ fn log_to_file(message: &str) {
             let _ = file.write_all(log_message.as_bytes());
         }
     }
+}
+
+fn read_string(value: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        value.get(key).and_then(|field| match field {
+            Value::String(text) if !text.is_empty() => Some(text.clone()),
+            Value::Number(number) => Some(number.to_string()),
+            Value::Bool(flag) => Some(flag.to_string()),
+            _ => None,
+        })
+    })
+}
+
+fn read_u64(value: &Value, keys: &[&str]) -> Option<u64> {
+    keys.iter().find_map(|key| {
+        value.get(key).and_then(|field| match field {
+            Value::Number(number) => number.as_u64(),
+            Value::String(text) => text.parse::<u64>().ok(),
+            _ => None,
+        })
+    })
+}
+
+fn select_token_payload<'a>(root: &'a Value) -> &'a Value {
+    let has_token_fields = |value: &Value| {
+        value.get("access_token").is_some()
+            || value.get("accessToken").is_some()
+            || value.get("refresh_token").is_some()
+            || value.get("refreshToken").is_some()
+            || value.get("token").is_some()
+    };
+
+    if has_token_fields(root) {
+        return root;
+    }
+
+    for key in ["data", "tokens", "result", "payload"] {
+        if let Some(candidate) = root.get(key) {
+            if has_token_fields(candidate) {
+                return candidate;
+            }
+        }
+    }
+
+    root
+}
+
+fn parse_token_response(response_text: &str) -> Result<TokenData, String> {
+    let value: Value = serde_json::from_str(response_text)
+        .map_err(|e| format!("Failed to parse token response JSON: {}", e))?;
+
+    let payload = select_token_payload(&value);
+
+    let access_token = read_string(payload, &["access_token", "accessToken", "token"])
+        .unwrap_or_default();
+
+    let refresh_token = read_string(payload, &["refresh_token", "refreshToken"]);
+
+    if access_token.is_empty() && refresh_token.is_none() {
+        return Err("Response does not contain access_token/accessToken or refresh_token/refreshToken".to_string());
+    }
+
+    Ok(TokenData {
+        access_token,
+        refresh_token,
+        expires_in: read_u64(payload, &["expires_in", "expiresIn"]),
+        scope: read_string(payload, &["scope"]),
+        token_type: read_string(payload, &["token_type", "tokenType"]),
+        id_token: read_string(payload, &["id_token", "idToken"]),
+        timestamp: Some(chrono::Utc::now().to_rfc3339()),
+    })
+}
+
+fn log_token_summary(token_data: &TokenData) {
+    log_to_file("Token data parsed successfully");
+    log_to_file(&format!(
+        "  - access_token: present (length: {})",
+        token_data.access_token.len()
+    ));
+
+    if let Some(ref rt) = token_data.refresh_token {
+        log_to_file(&format!("  - refresh_token: present (length: {})", rt.len()));
+    } else {
+        log_to_file("  - refresh_token: not present in response");
+    }
+
+    if let Some(expires) = token_data.expires_in {
+        log_to_file(&format!("  - expires_in: {} seconds (~{} minutes)", expires, expires / 60));
+    }
+    if let Some(ref scope) = token_data.scope {
+        log_to_file(&format!("  - scope: {}", scope));
+    }
+    if let Some(ref token_type) = token_data.token_type {
+        log_to_file(&format!("  - token_type: {}", token_type));
+    }
+    if let Some(ref id_token) = token_data.id_token {
+        log_to_file(&format!("  - id_token: present (length: {})", id_token.len()));
+    }
+}
+
+fn save_token_data(token_data: &TokenData) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(token_data)
+        .map_err(|e| {
+            log_to_file(&format!("ERROR: Failed to serialize token data: {}", e));
+            format!("Failed to serialize token data: {}", e)
+        })?;
+
+    let cwd = std::env::current_dir()
+        .map_err(|e| {
+            log_to_file(&format!("ERROR: Failed to get current directory: {}", e));
+            format!("Failed to get current directory: {}", e)
+        })?;
+    let file_path = cwd.join("tokens.json");
+
+    std::fs::write(&file_path, json)
+        .map_err(|e| {
+            log_to_file(&format!("ERROR: Failed to write tokens.json: {}", e));
+            format!("Failed to write tokens.json: {}", e)
+        })?;
+
+    println!("Tokens saved successfully to: {:?}", file_path);
+    log_to_file(&format!("Tokens saved to: {:?}", file_path));
+    Ok(())
 }
 
 #[tauri::command]
@@ -213,76 +346,75 @@ async fn login_google(_app: AppHandle, config: OAuthConfig) -> Result<TokenData,
         return Err(format!("Token exchange failed ({}): {}", status, err_text));
     }
 
-    log_to_file(&format!("✓ Token exchange successful (status: {})", res.status()));
-    
-    // Log raw response for debugging
+    log_to_file(&format!("Token exchange successful (status: {})", res.status()));
+
     let response_text = res.text().await
         .map_err(|e| {
             log_to_file(&format!("ERROR: Failed to read response text: {}", e));
             format!("Failed to read response text: {}", e)
         })?;
-    
-    log_to_file(&format!("Raw token response: {}", response_text));
-    
-    // Parse response
-    let mut token_data: TokenData = serde_json::from_str(&response_text)
+
+    let token_data = parse_token_response(&response_text)
         .map_err(|e| {
             log_to_file(&format!("ERROR: Failed to parse token response: {}", e));
-            format!("Failed to parse token response: {}", e)
+            e
         })?;
-    token_data.timestamp = Some(chrono::Utc::now().to_rfc3339());
-    
-    // Log token info (without exposing full tokens)
-    log_to_file("✓ Token data parsed successfully");
-    log_to_file(&format!("  - access_token: {}... (length: {})", 
-        &token_data.access_token[..20.min(token_data.access_token.len())], 
-        token_data.access_token.len()));
-    
-    if let Some(ref rt) = token_data.refresh_token {
-        log_to_file(&format!("  - refresh_token: ✓ PRESENT (length: {}, starts with: {})", 
-            rt.len(),
-            &rt[..10.min(rt.len())]));
-    } else {
-        log_to_file("  - refresh_token: ✗ NOT PRESENT - This may happen if user already granted consent before");
-        log_to_file("    To get refresh_token: Revoke app access at https://myaccount.google.com/permissions and try again");
-    }
-    
-    if let Some(expires) = token_data.expires_in {
-        log_to_file(&format!("  - expires_in: {} seconds (~{} minutes)", expires, expires / 60));
-    }
-    if let Some(ref scope) = token_data.scope {
-        log_to_file(&format!("  - scope: {}", scope));
-    }
-    if let Some(ref token_type) = token_data.token_type {
-        log_to_file(&format!("  - token_type: {}", token_type));
-    }
-    if let Some(ref id_token) = token_data.id_token {
-        log_to_file(&format!("  - id_token: {}... (length: {})", &id_token[..20.min(id_token.len())], id_token.len()));
+
+    log_token_summary(&token_data);
+    save_token_data(&token_data)?;
+    log_to_file("========== OAUTH LOGIN COMPLETED SUCCESSFULLY ==========\n");
+
+    Ok(token_data)
+}
+
+
+#[tauri::command]
+async fn login_with_password(_app: AppHandle, config: BasicLoginConfig) -> Result<TokenData, String> {
+    log_to_file("========== BASIC LOGIN STARTED ==========");
+
+    if config.auth_url.is_empty() || config.username.is_empty() || config.password.is_empty() {
+        log_to_file("ERROR: auth_url, username or password is empty");
+        return Err("Login endpoint, username and password are required".to_string());
     }
 
-    // Save to file
-    let json = serde_json::to_string_pretty(&token_data)
+    let client = reqwest::Client::new();
+    let credentials = BASE64_STANDARD.encode(format!("{}:{}", config.username, config.password));
+
+    log_to_file(&format!("Calling login endpoint: {}", config.auth_url));
+
+    let res = client
+        .get(&config.auth_url)
+        .header("Authorization", format!("Basic {}", credentials))
+        .send()
+        .await
         .map_err(|e| {
-            log_to_file(&format!("ERROR: Failed to serialize token data: {}", e));
-            format!("Failed to serialize token data: {}", e)
+            log_to_file(&format!("ERROR: Network error during password login: {}", e));
+            format!("Network error during password login: {}", e)
         })?;
-    
-    let cwd = std::env::current_dir()
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let err_text = res.text().await.unwrap_or_default();
+        let short_error: String = err_text.chars().take(400).collect();
+        log_to_file(&format!("ERROR: Password login failed ({})", status));
+        return Err(format!("Password login failed ({}): {}", status, short_error));
+    }
+
+    let response_text = res.text().await
         .map_err(|e| {
-            log_to_file(&format!("ERROR: Failed to get current directory: {}", e));
-            format!("Failed to get current directory: {}", e)
+            log_to_file(&format!("ERROR: Failed to read password login response: {}", e));
+            format!("Failed to read password login response: {}", e)
         })?;
-    let file_path = cwd.join("tokens.json");
-    
-    std::fs::write(&file_path, json)
+
+    let token_data = parse_token_response(&response_text)
         .map_err(|e| {
-            log_to_file(&format!("ERROR: Failed to write tokens.json: {}", e));
-            format!("Failed to write tokens.json: {}", e)
+            log_to_file(&format!("ERROR: Failed to parse password login response: {}", e));
+            e
         })?;
-    
-    println!("✓ Tokens saved successfully to: {:?}", file_path);
-    log_to_file(&format!("✓ Tokens saved to: {:?}", file_path));
-    log_to_file("========== OAUTH LOGIN COMPLETED SUCCESSFULLY ==========\n");
+
+    log_token_summary(&token_data);
+    save_token_data(&token_data)?;
+    log_to_file("========== BASIC LOGIN COMPLETED SUCCESSFULLY ==========\n");
 
     Ok(token_data)
 }
@@ -293,7 +425,9 @@ pub fn run() {
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
-    .invoke_handler(tauri::generate_handler![login_google])
+    .invoke_handler(tauri::generate_handler![login_google, login_with_password])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }
+
+
