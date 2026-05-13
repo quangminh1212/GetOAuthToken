@@ -1,22 +1,12 @@
-node_modules
-dist
-.env
-tokens.json
-project_config.json
-.DS_Store
-
-# Logs
-log/log.txt
-log/*.txt
-!log/.gitkeep
-src-tauri/log/
-
-# Build outputs
-release/
+node_modules/
+client/node_modules/
+client/dist/
 src-tauri/target/
-*.exe
-*.msi
-*.dmg
-*.deb
-*.rpm
-*.AppImage
+tokens.json
+log/
+*.log
+.env
+client/.env
+client/.env.local
+*.tmp
+*.bak
