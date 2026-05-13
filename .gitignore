@@ -2,6 +2,7 @@ node_modules/
 client/node_modules/
 client/dist/
 src-tauri/target/
+src-tauri/gen/
 tokens.json
 log/
 *.log
