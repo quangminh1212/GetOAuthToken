@@ -42,7 +42,7 @@ if not exist "client\node_modules" (
   )
 )
 
-echo [INFO] Launching Tauri dev app...
+echo [INFO] Launching local WebView at http://127.0.0.1:1420 ...
 call npm run tauri:dev
 if errorlevel 1 (
   echo [ERROR] Failed to launch project.
