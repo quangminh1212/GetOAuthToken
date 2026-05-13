@@ -1,24 +1,15 @@
 import { useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Check, Clipboard, Eye, EyeOff, Loader2, RefreshCcw, ShieldCheck } from 'lucide-react';
-
-const tokenProviders = [
-  {
-    id: 'kiro',
-    name: 'Kiro',
-    command: 'login_kiro',
-    endpointLabel: 'Kiro login URL',
-    emptyText: 'Nhap thong tin Kiro va chay login de lay refresh token.',
-  },
-];
+import { defaultProvider, findProvider, tokenProviders } from './providers';
 
 const initialForm = {
-  provider: 'kiro',
+  provider: defaultProvider.id,
   authUrl: '',
   username: '',
   password: '',
-  method: 'GET',
-  mode: 'basic',
+  method: defaultProvider.defaultRequestMethod,
+  mode: defaultProvider.defaultCredentialMode,
 };
 
 function App() {
@@ -30,7 +21,7 @@ function App() {
   const [copied, setCopied] = useState('');
 
   const provider = useMemo(
-    () => tokenProviders.find((item) => item.id === form.provider) || tokenProviders[0],
+    () => findProvider(form.provider),
     [form.provider],
   );
 
